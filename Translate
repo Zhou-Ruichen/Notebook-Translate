@@ -1,0 +1,124 @@
+// extension.ts
+import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// 用于翻译的API接口
+interface TranslationService {
+    translate(text: string): Promise<string>;
+}
+
+// 模拟翻译服务 (实际项目中可以替换为真实的翻译API，如百度、Google等)
+class MockTranslationService implements TranslationService {
+    async translate(text: string): Promise<string> {
+        // 这里仅作为示例，实际使用时应当替换为真实的翻译API调用
+        console.log('正在翻译文本:', text);
+        // 在实际实现中，你可以使用像百度翻译、有道翻译或Google翻译等API
+        return `[翻译结果] ${text}`;
+    }
+}
+
+export function activate(context: vscode.ExtensionContext) {
+    console.log('Jupyter Notebook Markdown 英译汉插件已激活');
+
+    // 注册命令
+    let disposable = vscode.commands.registerCommand('ipynb-translator.translateMarkdown', async () => {
+        try {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showInformationMessage('没有打开的文件');
+                return;
+            }
+
+            const document = editor.document;
+            // 检查文件是否是ipynb格式
+            if (path.extname(document.fileName) !== '.ipynb') {
+                vscode.window.showInformationMessage('当前文件不是Jupyter Notebook (.ipynb)文件');
+                return;
+            }
+
+            vscode.window.showInformationMessage('开始翻译Markdown单元格...');
+            
+            // 读取ipynb文件内容
+            const content = document.getText();
+            const notebook = JSON.parse(content);
+            
+            // 检查是否有cells属性
+            if (!notebook.cells || !Array.isArray(notebook.cells)) {
+                vscode.window.showInformationMessage('无法识别的Notebook格式');
+                return;
+            }
+
+            // 创建翻译服务实例
+            const translationService = new MockTranslationService();
+            
+            // 标记是否有单元格被翻译
+            let hasTranslated = false;
+            
+            // 遍历所有单元格
+            for (let i = 0; i < notebook.cells.length; i++) {
+                const cell = notebook.cells[i];
+                
+                // 检查单元格类型是否为markdown
+                if (cell.cell_type === 'markdown') {
+                    // 检查单元格是否有source属性，且是数组或字符串
+                    if (cell.source) {
+                        // 合并source（如果是数组）
+                        const markdownContent = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
+                        
+                        // 检测markdownContent是否包含中文（简单检测）
+                        const containsChinese = /[\u4e00-\u9fa5]/.test(markdownContent);
+                        
+                        // 如果不包含中文，则认为是英文，进行翻译
+                        if (!containsChinese) {
+                            // 翻译markdown内容
+                            const translatedContent = await translationService.translate(markdownContent);
+                            
+                            // 更新cell的source
+                            if (Array.isArray(cell.source)) {
+                                // 如果原始source是数组，我们需要保留换行符的位置
+                                // 这里采用简化方法，将整个翻译后的内容作为单个元素
+                                cell.source = [translatedContent];
+                            } else {
+                                cell.source = translatedContent;
+                            }
+                            
+                            hasTranslated = true;
+                        }
+                    }
+                }
+            }
+            
+            if (!hasTranslated) {
+                vscode.window.showInformationMessage('没有找到需要翻译的Markdown单元格');
+                return;
+            }
+            
+            // 将修改后的notebook写回文件
+            // 注意：这会覆盖原始文件，可能需要添加备份功能
+            const modifiedContent = JSON.stringify(notebook, null, 2);
+            
+            // 替换编辑器内容
+            const fullRange = new vscode.Range(
+                document.positionAt(0),
+                document.positionAt(document.getText().length)
+            );
+            
+            const edit = new vscode.WorkspaceEdit();
+            edit.replace(document.uri, fullRange, modifiedContent);
+            
+            await vscode.workspace.applyEdit(edit);
+            
+            vscode.window.showInformationMessage('Markdown单元格翻译完成');
+        } catch (error) {
+            vscode.window.showErrorMessage(`翻译出错: ${error}`);
+            console.error('翻译出错:', error);
+        }
+    });
+
+    context.subscriptions.push(disposable);
+}
+
+export function deactivate() {
+    console.log('Jupyter Notebook Markdown 英译汉插件已停用');
+}
