@@ -3,6 +3,7 @@
   "displayName": "Jupyter Notebook Markdown 英译汉",
   "description": "将Jupyter Notebook中的Markdown单元格从英文翻译为中文",
   "version": "0.1.0",
+  "publisher": "your-publisher-name",
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -10,108 +11,48 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:ipynb-translator.translateMarkdown",
-    "onCommand:ipynb-translator.configureEngine"
+    "onCommand:ipynbTranslator.translateMarkdownEnToZh"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "ipynb-translator.translateMarkdown",
-        "title": "翻译Notebook Markdown单元格 (英译汉)"
-      },
-      {
-        "command": "ipynb-translator.configureEngine",
-        "title": "配置Notebook Markdown翻译引擎"
+        "command": "ipynbTranslator.translateMarkdownEnToZh",
+        "title": "翻译 Notebook Markdown 单元格（英译汉）"
       }
     ],
-    "menus": {
-      "editor/context": [
-        {
-          "when": "resourceExtname == .ipynb",
-          "command": "ipynb-translator.translateMarkdown",
-          "group": "ipynb"
-        },
-        {
-          "when": "resourceExtname == .ipynb",
-          "command": "ipynb-translator.configureEngine",
-          "group": "ipynb"
-        }
-      ]
-    },
     "configuration": {
       "title": "Jupyter Notebook Markdown 翻译器",
       "properties": {
-        "ipynbTranslator.engineType": {
+        "ipynbTranslator.engine": {
           "type": "string",
-          "enum": ["baidu", "youdao", "google", "openai", "azure", "mock"],
+          "enum": [
+            "mock",
+            "openai"
+          ],
           "default": "mock",
-          "description": "选择翻译引擎类型"
-        },
-        "ipynbTranslator.baidu.appid": {
-          "type": "string",
-          "default": "",
-          "description": "百度翻译API的APPID"
-        },
-        "ipynbTranslator.baidu.secret": {
-          "type": "string",
-          "default": "",
-          "description": "百度翻译API的密钥"
-        },
-        "ipynbTranslator.youdao.appKey": {
-          "type": "string",
-          "default": "",
-          "description": "有道翻译API的应用ID"
-        },
-        "ipynbTranslator.youdao.appSecret": {
-          "type": "string",
-          "default": "",
-          "description": "有道翻译API的应用密钥"
-        },
-        "ipynbTranslator.google.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Google翻译API密钥"
+          "description": "选择翻译引擎：mock（模拟翻译）或 openai"
         },
         "ipynbTranslator.openai.apiKey": {
           "type": "string",
           "default": "",
-          "description": "OpenAI API密钥"
+          "description": "OpenAI API 密钥"
         },
         "ipynbTranslator.openai.model": {
           "type": "string",
-          "default": "gpt-3.5-turbo",
-          "description": "OpenAI模型名称"
+          "default": "gpt-4o-mini",
+          "description": "OpenAI 模型名称（例如：gpt-4o-mini, gpt-3.5-turbo）"
         },
-        "ipynbTranslator.openai.prompt": {
+        "ipynbTranslator.openai.baseUrl": {
           "type": "string",
-          "default": "请将以下英文Markdown内容翻译成中文，保持所有的Markdown格式和标签不变：",
-          "description": "OpenAI翻译提示词"
+          "default": "https://api.openai.com/v1",
+          "description": "OpenAI API 基础 URL（可用于兼容接口）"
         },
-        "ipynbTranslator.openai.apiEndpoint": {
+        "ipynbTranslator.translationMode": {
           "type": "string",
-          "default": "https://api.openai.com/v1/chat/completions",
-          "description": "OpenAI API端点URL（可选，用于自定义API代理）"
-        },
-        "ipynbTranslator.azure.apiKey": {
-          "type": "string",
-          "default": "",
-          "description": "Azure OpenAI API密钥"
-        },
-        "ipynbTranslator.azure.deploymentId": {
-          "type": "string",
-          "default": "",
-          "description": "Azure OpenAI部署ID"
-        },
-        "ipynbTranslator.azure.apiEndpoint": {
-          "type": "string",
-          "default": "",
-          "description": "Azure OpenAI端点URL"
-        },
-        "ipynbTranslator.azure.prompt": {
-          "type": "string",
-          "default": "请将以下英文Markdown内容翻译成中文，保持所有的Markdown格式和标签不变：",
-          "description": "Azure OpenAI翻译提示词"
+          "enum": ["replace", "bilingual"],
+          "default": "bilingual",
+          "description": "翻译模式：replace（替换原文）或 bilingual（双语对照）"
         }
       }
     }
@@ -125,16 +66,7 @@
   },
   "devDependencies": {
     "@types/vscode": "^1.60.0",
-    "@types/glob": "^7.1.3",
-    "@types/mocha": "^8.2.2",
-    "@types/node": "14.x",
-    "eslint": "^7.27.0",
-    "glob": "^7.1.7",
-    "mocha": "^8.4.0",
-    "typescript": "^4.3.2",
-    "vscode-test": "^1.5.2"
-  },
-  "dependencies": {
-    "axios": "^0.24.0"
+    "@types/node": "^14.x",
+    "typescript": "^4.3.2"
   }
 }
