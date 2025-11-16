@@ -4,6 +4,10 @@
   "description": "将Jupyter Notebook中的Markdown单元格从英文翻译为中文",
   "version": "0.1.0",
   "publisher": "your-publisher-name",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Zhou-Ruichen/Notebook-Translate.git"
+  },
   "engines": {
     "vscode": "^1.60.0"
   },
@@ -50,7 +54,10 @@
         },
         "ipynbTranslator.translationMode": {
           "type": "string",
-          "enum": ["replace", "bilingual"],
+          "enum": [
+            "replace",
+            "bilingual"
+          ],
           "default": "bilingual",
           "description": "翻译模式：replace（替换原文）或 bilingual（双语对照）"
         }
