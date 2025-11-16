@@ -1,143 +1,156 @@
-# Jupyter Notebook Markdown 英译汉
+# Jupyter Notebook Markdown 英译汉扩展
 
-这个VSCode扩展允许你将Jupyter Notebook (.ipynb)文件中的英文Markdown单元格翻译成中文。支持多种翻译引擎，包括传统翻译API（百度、有道、Google）和大模型API（OpenAI、Azure OpenAI）。
+一个 VSCode 扩展，用于将 Jupyter Notebook (.ipynb) 文件中的英文 Markdown 单元格自动翻译成中文。
 
-## 功能
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/Zhou-Ruichen/Notebook-Translate/releases)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-- 一键翻译当前打开的Jupyter Notebook中的所有英文Markdown单元格
-- 支持多种翻译引擎：
-  - 百度翻译API
-  - 有道翻译API
-  - Google翻译API
-  - OpenAI (GPT) API
-  - Azure OpenAI API
-  - 模拟翻译（测试用）
-- 自定义翻译配置，包括API密钥、模型选择和提示词设置
-- 自动检测单元格语言，只翻译英文单元格
-- 保留原始格式和Markdown标记
-- 翻译进度指示器，支持取消操作
+## ✨ 当前功能（V0.1.0）
 
-## 使用方法
+- ✅ 一键翻译 Notebook 中的所有英文 Markdown 单元格
+- ✅ 自动跳过已包含中文的单元格
+- ✅ **双语对照模式**：默认保留原文在 HTML 注释中，方便对比
+- ✅ 支持两种翻译引擎：
+  - **Mock 翻译**：用于调试和测试（无需配置）
+  - **OpenAI 翻译**：使用 GPT 模型进行真实翻译
+- ✅ 进度显示和取消支持
+- ✅ 完整的错误处理
+- ✅ 优化的技术文档翻译提示词
 
-### 基本操作
+## 📦 安装
 
-1. 在VSCode中打开一个.ipynb文件
-2. 通过以下任一方式运行翻译命令：
-   - 右键单击编辑器，在上下文菜单中选择"翻译Notebook Markdown单元格 (英译汉)"
-   - 按下Ctrl+Shift+P打开命令面板，输入并选择"翻译Notebook Markdown单元格 (英译汉)"
-3. 在弹出的选择框中选择要使用的翻译引擎
-4. 如果是首次使用所选引擎，系统会提示输入相关API配置信息
-5. 等待翻译完成
+### 方式一：下载安装（推荐）
 
-### 配置翻译引擎
+1. 从 [Releases](https://github.com/Zhou-Ruichen/Notebook-Translate/releases) 下载最新的 `.vsix` 文件
+2. 在 VSCode 中：**扩展** → **更多操作(···)** → **从 VSIX 安装**
+3. 选择下载的文件
 
-1. 通过以下任一方式打开配置界面：
-   - 右键单击编辑器，在上下文菜单中选择"配置Notebook Markdown翻译引擎"
-   - 按下Ctrl+Shift+P打开命令面板，输入并选择"配置Notebook Markdown翻译引擎"
-2. 选择要配置的翻译引擎
-3. 根据提示输入相关配置信息
+### 方式二：从源码安装（开发者）
 
-### 手动修改设置
-
-你也可以直接在VSCode的设置中修改配置：
-
-1. 打开VSCode设置（文件 > 首选项 > 设置，或按Ctrl+,）
-2. 搜索"ipynbTranslator"
-3. 调整相关设置
-
-## 翻译引擎配置指南
-
-### 百度翻译
-
-需要在[百度翻译开放平台](http://api.fanyi.baidu.com/)注册并创建应用，获取APPID和密钥。
-
-配置项：
-- APPID: 应用ID
-- 密钥: 应用密钥
-
-### 有道翻译
-
-需要在[有道智云](https://ai.youdao.com/)注册并创建应用，获取应用ID和应用密钥。
-
-配置项：
-- 应用ID: 应用的ID
-- 应用密钥: 应用的密钥
-
-### Google翻译
-
-需要在[Google Cloud Platform](https://console.cloud.google.com/)创建项目，启用Cloud Translation API，并生成API密钥。
-
-配置项：
-- API密钥: Google Cloud API密钥
-
-### OpenAI (GPT)
-
-需要在[OpenAI平台](https://platform.openai.com/)注册账号并获取API密钥。
-
-配置项：
-- API密钥: OpenAI API密钥
-- 模型: 使用的模型，如"gpt-3.5-turbo"、"gpt-4"等
-- 提示词: 引导大模型进行翻译的提示词
-- API端点: API请求的URL（可选，用于自定义API代理）
-
-### Azure OpenAI
-
-需要在[Azure Portal](https://portal.azure.com/)创建Azure OpenAI资源，并部署相应的模型。
-
-配置项：
-- API密钥: Azure OpenAI API密钥
-- 部署ID: 模型部署的ID
-- API端点: Azure OpenAI服务的端点URL
-- 提示词: 引导大模型进行翻译的提示词
-
-## 提示词示例
-
-以下是一些针对大模型翻译的提示词示例：
-
-### 基础翻译提示词
-```
-请将以下英文Markdown内容翻译成中文，保持所有的Markdown格式和标签不变：
+```bash
+git clone https://github.com/Zhou-Ruichen/Notebook-Translate.git
+cd Notebook-Translate
+npm install
+npm run compile
+# 按 F5 启动调试
 ```
 
-### 学术翻译提示词
+## 🚀 使用方法
+
+### 基本使用
+
+1. 在 VSCode 中打开一个 `.ipynb` 文件
+2. 按 `Cmd+Shift+P`（Mac）或 `Ctrl+Shift+P`（Windows/Linux）
+3. 输入：`翻译 Notebook Markdown 单元格（英译汉）`
+4. 执行命令，等待翻译完成
+
+### 配置 OpenAI（可选）
+
+默认使用 Mock 模式（无需配置）。如需真实翻译：
+
+1. 打开 VSCode 设置（`Cmd+,` 或 `Ctrl+,`）
+2. 搜索 `ipynbTranslator`
+3. 配置：
+
+```json
+{
+  "ipynbTranslator.engine": "openai",
+  "ipynbTranslator.openai.apiKey": "你的-API-Key",
+  "ipynbTranslator.openai.model": "gpt-4o-mini",
+  "ipynbTranslator.openai.baseUrl": "https://api.openai.com/v1"
+}
 ```
-请将以下英文Markdown内容翻译成中文，这是一篇学术论文的内容，请使用恰当的学术用语进行翻译，保持所有的Markdown格式和标签不变：
+
+### 翻译模式
+
+- **`bilingual`（默认）**：双语对照，原文保留在 HTML 注释中
+  ```markdown
+  <!-- Original English:
+  # Introduction to Data Science
+  -->
+  
+  # 数据科学简介
+  ```
+
+- **`replace`**：直接替换为译文
+
+配置：
+```json
+{
+  "ipynbTranslator.translationMode": "bilingual"  // 或 "replace"
+}
 ```
 
-### 技术文档提示词
-```
-你是一位精通编程和技术文档翻译的专家。请将以下英文Markdown内容翻译成中文，这是一篇技术文档，包含代码示例和技术术语，请准确翻译术语并保持代码块不变，同时保持所有的Markdown格式和标签不变：
-```
+## 📝 配置项说明
 
-## 安装方法
+| 配置项 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `ipynbTranslator.engine` | string | `mock` | 翻译引擎：`mock` 或 `openai` |
+| `ipynbTranslator.translationMode` | string | `bilingual` | 翻译模式：`bilingual` 或 `replace` |
+| `ipynbTranslator.openai.apiKey` | string | - | OpenAI API 密钥 |
+| `ipynbTranslator.openai.model` | string | `gpt-4o-mini` | 模型名称 |
+| `ipynbTranslator.openai.baseUrl` | string | `https://api.openai.com/v1` | API 端点（支持代理） |
 
-### 从VSIX文件安装
+## 🎯 工作原理
 
-1. 下载插件的VSIX文件
-2. 在VSCode中，点击扩展视图图标
-3. 点击"..."菜单，选择"从VSIX安装..."
-4. 选择下载的VSIX文件
+1. 检测当前是否是 Notebook 文件
+2. 遍历所有 Markdown 单元格
+3. 使用正则表达式检测是否包含中文，如包含则跳过
+4. 调用选择的翻译引擎进行翻译
+5. 根据翻译模式格式化结果
+6. 使用 VSCode Notebook API 更新单元格内容
 
-### 从源代码安装
+## 📖 文档
 
-1. 克隆这个仓库
-2. 在项目根目录运行`npm install`
-3. 运行`npm run compile`
-4. 按下F5开始调试
+- [使用指南](USAGE.md)：详细的使用说明和配置指南
+- [快速开始](QUICKSTART.md)：快速测试和开发指南
+- [技术文档](V0.1-SUMMARY.md)：实现细节和架构说明
 
-## 注意事项
+## 🔮 未来计划
 
-- 翻译会直接修改当前文件，建议在翻译前备份原始文件
-- 若单元格已包含中文内容，将跳过翻译
-- 大模型翻译通常更适合保留原始格式，但可能会有更长的响应时间
-- 提示词对大模型翻译质量有重要影响，可以根据需要进行调整
+以下功能计划在后续版本中实现：
 
-## 待添加功能
+### 计划中的功能
+- [ ] 支持更多翻译引擎（百度、有道、Google 等）
+- [ ] 支持批量翻译多个 Notebook 文件
+- [ ] 支持选择性翻译（指定单元格范围）
+- [ ] 翻译历史记录和回滚功能
+- [ ] 自定义翻译提示词配置
+- [ ] 术语表和翻译记忆库
+- [ ] 翻译质量评估
+- [ ] 支持更多语言对（中译英、日译中等）
 
-- [ ] 记忆上次选择的翻译引擎
-- [ ] 支持翻译选定的单元格而非整个文件
-- [ ] 添加翻译历史记录
-- [ ] 支持自定义翻译规则和术语表
-- [ ] 添加批量处理多个文件的功能
-- [ ] 添加翻译质量评估功能
-- [ ] 支持更多大模型服务提供商
+欢迎在 [Issues](https://github.com/Zhou-Ruichen/Notebook-Translate/issues) 中提出建议！
+
+## ⚠️ 注意事项
+
+1. **备份数据**：翻译会修改原文件，建议先备份
+2. **API 费用**：使用 OpenAI 翻译会产生 API 调用费用
+3. **网络要求**：OpenAI 模式需要网络连接
+4. **格式保留**：翻译器会尽力保留 Markdown 格式，但可能不完美
+
+## 🤝 贡献
+
+欢迎贡献代码、报告问题或提出建议！
+
+1. Fork 本仓库
+2. 创建你的特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启一个 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
+
+## 📮 联系方式
+
+如有问题或建议，请通过以下方式联系：
+
+- 提交 [Issue](https://github.com/Zhou-Ruichen/Notebook-Translate/issues)
+- Pull Request
+
+---
+
+**如果这个项目对你有帮助，请给个 ⭐️ Star 支持一下！**
+
