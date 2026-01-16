@@ -1,8 +1,8 @@
 {
-  "name": "ipynb-markdown-translator",
+  "name": "ipynb-translator",
   "displayName": "Jupyter Notebook Markdown 英译汉",
   "description": "将Jupyter Notebook中的Markdown单元格从英文翻译为中文",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "your-publisher-name",
   "repository": {
     "type": "git",
@@ -32,10 +32,21 @@
           "type": "string",
           "enum": [
             "mock",
-            "openai"
+            "openai",
+            "ollama"
           ],
           "default": "mock",
-          "description": "选择翻译引擎：mock（模拟翻译）或 openai"
+          "description": "选择翻译引擎：mock（模拟翻译）、openai 或 ollama（本地模型）"
+        },
+        "ipynbTranslator.ollama.endpoint": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama API 端点地址"
+        },
+        "ipynbTranslator.ollama.model": {
+          "type": "string",
+          "default": "llama3",
+          "description": "Ollama 模型名称（例如：llama3, mistral, qwen）"
         },
         "ipynbTranslator.openai.apiKey": {
           "type": "string",

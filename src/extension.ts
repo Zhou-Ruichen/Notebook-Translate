@@ -5,7 +5,8 @@
 
 import * as vscode from 'vscode';
 import { hasChinese } from './utils';
-import { Translator, MockTranslator, OpenAITranslator, formatTranslation, TranslationMode } from './translator';
+import { Translator, MockTranslator, OpenAITranslator, OllamaTranslator, formatTranslation, TranslationMode } from './translator';
+import { TranslationCache } from './cache';
 
 /**
  * 扩展激活函数
@@ -18,7 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
     const disposable = vscode.commands.registerCommand(
         'ipynbTranslator.translateMarkdownEnToZh',
         async () => {
-            await translateNotebookMarkdown();
+            await translateNotebookMarkdown(context);
         }
     );
 
@@ -35,8 +36,9 @@ export function deactivate() {
 
 /**
  * 翻译 Notebook Markdown 单元格的核心函数
+ * @param context VSCode 扩展上下文（用于缓存）
  */
-async function translateNotebookMarkdown() {
+async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
     // 1. 检查当前活动编辑器是否是 Notebook
     const notebookEditor = vscode.window.activeNotebookEditor;
 
@@ -85,6 +87,10 @@ async function translateNotebookMarkdown() {
             const totalCells = markdownCells.length;
             let translatedCount = 0;
             let skippedCount = 0;
+            let cachedCount = 0;
+
+            // 初始化翻译缓存
+            const cache = new TranslationCache(context);
 
             // 6. 遍历并翻译每个 Markdown 单元格
             for (let i = 0; i < markdownCells.length; i++) {
@@ -118,8 +124,23 @@ async function translateNotebookMarkdown() {
                 }
 
                 try {
-                    // 9. 调用翻译器翻译
-                    const translatedText = await translator.translate(cellText);
+                    // 9. 检查缓存是否命中
+                    const cachedTranslation = cache.get(cellText);
+                    let translatedText: string;
+
+                    if (cachedTranslation) {
+                        // 缓存命中，直接使用缓存结果
+                        console.log(`单元格 ${i + 1} 缓存命中`);
+                        translatedText = cachedTranslation;
+                        cachedCount++;
+                    } else {
+                        // 缓存未命中，调用翻译器翻译
+                        translatedText = await translator.translate(cellText);
+                        // 存入缓存
+                        cache.put(cellText, translatedText);
+                        translatedCount++;
+                        console.log(`单元格 ${i + 1} 翻译成功`);
+                    }
 
                     // 10. 格式化翻译结果（根据翻译模式）
                     const formattedText = formatTranslation(cellText, translatedText, translationMode);
@@ -130,15 +151,12 @@ async function translateNotebookMarkdown() {
                         0, 0,
                         cell.document.lineCount, 0
                     );
-                    
+
                     // 替换整个单元格的内容
                     edit.replace(cell.document.uri, fullRange, formattedText);                    // 应用编辑
                     const success = await vscode.workspace.applyEdit(edit);
 
-                    if (success) {
-                        translatedCount++;
-                        console.log(`单元格 ${i + 1} 翻译成功`);
-                    } else {
+                    if (!success) {
                         console.error(`单元格 ${i + 1} 翻译失败：无法应用编辑`);
                     }
 
@@ -150,9 +168,9 @@ async function translateNotebookMarkdown() {
                 }
             }
 
-            // 11. 显示完成消息
+            // 12. 显示完成消息
             vscode.window.showInformationMessage(
-                `翻译完成！共翻译 ${translatedCount} 个单元格，跳过 ${skippedCount} 个单元格`
+                `翻译完成！共翻译 ${translatedCount} 个，跳过 ${skippedCount} 个，缓存命中 ${cachedCount} 个`
             );
         }
     );
@@ -183,6 +201,14 @@ function createTranslator(engine: string, config: vscode.WorkspaceConfiguration)
             }
 
             return new OpenAITranslator(apiKey, model, baseUrl);
+        }
+
+        case 'ollama': {
+            // Ollama 本地模型翻译器
+            const endpoint = config.get<string>('ollama.endpoint', 'http://localhost:11434');
+            const model = config.get<string>('ollama.model', 'llama3');
+
+            return new OllamaTranslator(endpoint, model);
         }
 
         default:

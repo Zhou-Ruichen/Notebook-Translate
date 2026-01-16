@@ -176,3 +176,139 @@ Translation Guidelines:
         }
     }
 }
+
+/**
+ * 通用 HTTP 请求函数
+ * 支持 http 和 https 协议
+ */
+function httpRequest(url: string, options: any): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(url);
+        const isHttps = urlObj.protocol === 'https:';
+        const httpModule = isHttps ? require('https') : require('http');
+
+        const reqOptions = {
+            hostname: urlObj.hostname,
+            port: urlObj.port || (isHttps ? 443 : 80),
+            path: urlObj.pathname + urlObj.search,
+            method: options.method || 'GET',
+            headers: options.headers || {}
+        };
+
+        const req = httpModule.request(reqOptions, (res: any) => {
+            let data = '';
+
+            res.on('data', (chunk: any) => {
+                data += chunk;
+            });
+
+            res.on('end', () => {
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    resolve(data);
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                }
+            });
+        });
+
+        req.on('error', (error: Error) => {
+            reject(error);
+        });
+
+        if (options.body) {
+            req.write(options.body);
+        }
+
+        req.end();
+    });
+}
+
+/**
+ * Ollama 翻译器
+ * 调用本地 Ollama API 进行翻译
+ */
+export class OllamaTranslator implements Translator {
+    private endpoint: string;
+    private model: string;
+
+    /**
+     * 构造函数
+     * @param endpoint Ollama API 端点（例如：http://localhost:11434）
+     * @param model 模型名称（例如：llama3, mistral）
+     */
+    constructor(endpoint: string = 'http://localhost:11434', model: string = 'llama3') {
+        this.endpoint = endpoint.endsWith('/') ? endpoint.slice(0, -1) : endpoint;
+        this.model = model;
+    }
+
+    async translate(text: string): Promise<string> {
+        // 构建请求 URL（使用 Ollama 的 /api/chat 接口）
+        const url = `${this.endpoint}/api/chat`;
+
+        // 构建翻译提示词（与 OpenAI 保持一致）
+        const systemPrompt = `You are a professional technical translator specializing in translating Jupyter Notebook documentation from English to Chinese.
+
+Translation Guidelines:
+1. Preserve all Markdown syntax (headers, lists, code blocks, links, etc.)
+2. Keep all code snippets, variable names, and function names in English
+3. Maintain technical terms accuracy (you can add Chinese translation in parentheses for key terms)
+4. Keep the same formatting and structure
+5. Translate naturally and fluently in Chinese, suitable for technical documentation
+6. Keep LaTeX math formulas unchanged`;
+
+        const userPrompt = `Please translate the following Markdown content into Chinese:\n\n${text}`;
+
+        // 构建请求体（Ollama Chat API 格式）
+        const requestBody = {
+            model: this.model,
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
+            stream: false,  // 禁用流式响应
+            options: {
+                temperature: 0.3  // 较低的温度以保持翻译的一致性
+            }
+        };
+
+        try {
+            // 发送 HTTP 请求
+            const responseText = await httpRequest(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            const data = JSON.parse(responseText);
+
+            // 提取翻译结果（Ollama Chat API 响应格式）
+            if (data.message && data.message.content) {
+                return data.message.content.trim();
+            } else if (data.error) {
+                throw new Error(`Ollama API error: ${data.error}`);
+            } else {
+                throw new Error('Invalid response format from Ollama API');
+            }
+        } catch (error) {
+            if (error instanceof Error) {
+                // 提供更友好的错误提示
+                if (error.message.includes('ECONNREFUSED')) {
+                    throw new Error(
+                        `无法连接到 Ollama 服务 (${this.endpoint})。请确保：\n` +
+                        `1. Ollama 已安装并正在运行（运行 'ollama serve'）\n` +
+                        `2. 端点地址配置正确`
+                    );
+                }
+                if (error.message.includes('model') && error.message.includes('not found')) {
+                    throw new Error(
+                        `模型 '${this.model}' 未找到。请运行 'ollama pull ${this.model}' 下载模型`
+                    );
+                }
+                throw new Error(`翻译失败: ${error.message}`);
+            }
+            throw error;
+        }
+    }
+}
