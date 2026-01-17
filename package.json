@@ -22,46 +22,89 @@
     "commands": [
       {
         "command": "ipynbTranslator.translateMarkdownEnToZh",
-        "title": "翻译 Notebook Markdown 单元格（英译汉）"
+        "title": "IPynb Translator: Translate Notebook"
+      },
+      {
+        "command": "ipynbTranslator.testConnection",
+        "title": "IPynb Translator: Test Connection"
+      },
+      {
+        "command": "ipynbTranslator.selectProfile",
+        "title": "IPynb Translator: Select Profile"
+      },
+      {
+        "command": "ipynbTranslator.addProfile",
+        "title": "IPynb Translator: Add Profile"
+      },
+      {
+        "command": "ipynbTranslator.setApiKey",
+        "title": "IPynb Translator: Set API Key"
+      },
+      {
+        "command": "ipynbTranslator.cleanAllTranslations",
+        "title": "IPynb Translator: Clean Translations"
       }
     ],
     "configuration": {
       "title": "Jupyter Notebook Markdown 翻译器",
       "properties": {
-        "ipynbTranslator.engine": {
-          "type": "string",
-          "enum": [
-            "mock",
-            "openai",
-            "ollama"
-          ],
-          "default": "mock",
-          "description": "选择翻译引擎：mock（模拟翻译）、openai 或 ollama（本地模型）"
-        },
-        "ipynbTranslator.ollama.endpoint": {
-          "type": "string",
-          "default": "http://localhost:11434",
-          "description": "Ollama API 端点地址"
-        },
-        "ipynbTranslator.ollama.model": {
-          "type": "string",
-          "default": "llama3",
-          "description": "Ollama 模型名称（例如：llama3, mistral, qwen）"
-        },
-        "ipynbTranslator.openai.apiKey": {
+        "ipynbTranslator.activeProfile": {
           "type": "string",
           "default": "",
-          "description": "OpenAI API 密钥"
+          "description": "Current active profile. Please use 'Select Profile' command to switch.",
+          "scope": "window",
+          "markdownDescription": "Current active profile name. **Do not edit manually.** Use `IPynb Translator: Select Profile` command to switch."
         },
-        "ipynbTranslator.openai.model": {
-          "type": "string",
-          "default": "gpt-4o-mini",
-          "description": "OpenAI 模型名称（例如：gpt-4o-mini, gpt-3.5-turbo）"
-        },
-        "ipynbTranslator.openai.baseUrl": {
-          "type": "string",
-          "default": "https://api.openai.com/v1",
-          "description": "OpenAI API 基础 URL（可用于兼容接口）"
+        "ipynbTranslator.profiles": {
+          "type": "array",
+          "default": [
+            {
+              "name": "Local Ollama (Default)",
+              "provider": "ollama",
+              "endpoint": "http://localhost:11434",
+              "model": "llama3"
+            }
+          ],
+          "description": "翻译服务配置列表",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "配置名称（唯一标识）"
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "openai",
+                  "ollama",
+                  "baidu"
+                ],
+                "description": "服务提供商类型"
+              },
+              "baseUrl": {
+                "type": "string",
+                "description": "API 端点"
+              },
+              "model": {
+                "type": "string",
+                "description": "模型名称"
+              },
+              "appId": {
+                "type": "string",
+                "description": "百度翻译 APP ID"
+              },
+              "customPrompt": {
+                "type": "string",
+                "description": "自定义 System Prompt (可选)",
+                "markdownDescription": "Custom System Prompt to override the default translation instructions."
+              }
+            },
+            "required": [
+              "name",
+              "provider"
+            ]
+          }
         },
         "ipynbTranslator.translationMode": {
           "type": "string",

@@ -1,0 +1,20 @@
+feat: Release v0.3.0 - Security Upgrade & Profile System
+
+## Major Features
+- **Security Upgrade**: API Keys are now stored in VSCode's `SecretStorage` (Keychain) instead of plaintext settings.
+- **Profile System**: Support multiple translation profiles (OpenAI, Ollama, Baidu) with easy switching via `Select Profile`.
+- **UI/UX Improvements**:
+  - Added Status Bar item for real-time connection feedback.
+  - Silent connection testing to reduce notification noise.
+  - Normalized command titles (e.g., `IPynb Translator: ...`).
+- **Translation Logic**:
+  - Support for Custom System Prompts per profile.
+  - Auto-cleaning of `<think>` tags from reasoning models (e.g., DeepSeek R1).
+
+## Breaking Changes
+- **Configuration**: Deprecated flat configuration keys (`ipynbTranslator.openai.apiKey`, etc.). Users will be auto-migrated to the new Profile system on first run.
+- **Commands**: Renamed commands to follow a consistent naming convention.
+
+## Security
+- API Keys are stripped from `settings.json` upon saving and migrated to secure storage.
+- New `Set API Key` command allows safe key updates and deletion.
