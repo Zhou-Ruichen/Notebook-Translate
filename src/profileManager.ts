@@ -31,10 +31,12 @@ const DEFAULT_PROFILES: TranslatorProfile[] = [
 export class ProfileManager {
     private config: vscode.WorkspaceConfiguration;
     private secrets: vscode.SecretStorage;
+    private state: vscode.Memento;
 
     constructor(context: vscode.ExtensionContext) {
         this.config = vscode.workspace.getConfiguration('ipynbTranslator');
         this.secrets = context.secrets;
+        this.state = context.globalState;
 
         // 自动迁移旧的 API Key 到 SecretStorage
         this.migrateLegacyKeys();
@@ -80,8 +82,39 @@ export class ProfileManager {
      * 设置活动配置
      */
     async setActiveProfile(name: string): Promise<void> {
+        // 保存当前配置为历史配置，以便回滚
+        const current = this.getActiveProfileName();
+        if (current && current !== name) {
+            await this.state.update('previousProfileName', current);
+        }
+
         await this.config.update('activeProfile', name, vscode.ConfigurationTarget.Global);
         this.refresh();
+    }
+
+    /**
+     * 回滚到上一个配置
+     * @returns 成功回滚到的配置名称，如果无法回滚则返回 null
+     */
+    async rollbackToPrevious(): Promise<string | null> {
+        const previous = this.state.get<string>('previousProfileName');
+        const profiles = this.getProfiles();
+
+        if (previous && profiles.some(p => p.name === previous)) {
+            await this.setActiveProfile(previous);
+            return previous;
+        }
+
+        // 如果没有历史记录或历史配置已删除，回退到第一个
+        if (profiles.length > 0) {
+            const first = profiles[0].name;
+            if (first !== this.getActiveProfileName()) {
+                await this.setActiveProfile(first);
+                return first;
+            }
+        }
+
+        return null;
     }
 
     /**

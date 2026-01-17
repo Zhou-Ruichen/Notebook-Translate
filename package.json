@@ -15,11 +15,19 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:ipynbTranslator.translateMarkdownEnToZh"
+    "onCommand:ipynbTranslator.translateMarkdownEnToZh",
+    "onCommand:ipynbTranslator.testConnection",
+    "onCommand:ipynbTranslator.manageProfiles",
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "ipynbTranslator.manageProfiles",
+        "title": "IPynb Translator: Manage Profiles",
+        "icon": "$(gear)"
+      },
       {
         "command": "ipynbTranslator.translateMarkdownEnToZh",
         "title": "IPynb Translator: Translate Notebook"
@@ -27,18 +35,6 @@
       {
         "command": "ipynbTranslator.testConnection",
         "title": "IPynb Translator: Test Connection"
-      },
-      {
-        "command": "ipynbTranslator.selectProfile",
-        "title": "IPynb Translator: Select Profile"
-      },
-      {
-        "command": "ipynbTranslator.addProfile",
-        "title": "IPynb Translator: Add Profile"
-      },
-      {
-        "command": "ipynbTranslator.setApiKey",
-        "title": "IPynb Translator: Set API Key"
       },
       {
         "command": "ipynbTranslator.cleanAllTranslations",
