@@ -2,164 +2,91 @@
 
 一个 VSCode 扩展，用于将 Jupyter Notebook (.ipynb) 文件中的英文 Markdown 单元格自动翻译成中文。
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue.svg)](https://github.com/Zhou-Ruichen/Notebook-Translate/releases)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/Zhou-Ruichen/Notebook-Translate/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## ✨ 功能特性（V0.2.0）
+## ✨ 功能特性（V0.3.0）
 
-- ✅ 一键翻译 Notebook 中的所有英文 Markdown 单元格
-- ✅ 自动跳过已包含中文的单元格
-- ✅ **双语对照模式**：默认保留原文在 HTML 注释中，方便对比
-- ✅ **智能翻译缓存**：避免重复翻译，节省 API Token 和算力 🆕
-- ✅ 支持三种翻译引擎：
-  - **Mock 翻译**：用于调试和测试（无需配置）
-  - **OpenAI 翻译**：使用 GPT 模型进行真实翻译
-  - **Ollama 翻译**：使用本地模型，完全离线 🆕
-- ✅ 进度显示和取消支持
-- ✅ 完整的错误处理
+- 🔐 **安全存储 (Security)**: API Key 不再明文存储，集成 VSCode Keychain 安全管理 🆕
+- 🗂️ **多配置管理 (Profiles)**: 支持保存多套翻译配置（OpenAI, Ollama, 百度），一键切换 🆕
+- 🧠 **推理模型支持**: 完美支持 DeepSeek R1 等推理模型，自动清洗 `<think>` 思维链内容 🆕
+- ✅ **智能缓存**: 避免重复翻译，节省 Token
+- ✅ **双语对照**: 支持保留原文（`bilingual`）或直接替换（`replace`）
 
 ## 📦 安装
 
-### 方式一：下载安装（推荐）
-
 1. 从 [Releases](https://github.com/Zhou-Ruichen/Notebook-Translate/releases) 下载最新的 `.vsix` 文件
 2. 在 VSCode 中：**扩展** → **更多操作(···)** → **从 VSIX 安装**
-3. 选择下载的文件
-
-### 方式二：从源码安装（开发者）
-
-```bash
-git clone https://github.com/Zhou-Ruichen/Notebook-Translate.git
-cd Notebook-Translate
-npm install
-npm run compile
-# 按 F5 启动调试
-```
 
 ## 🚀 使用方法
 
-### 基本使用
+### 1. 快速开始
+打开 `.ipynb` 文件，点击状态栏右下角的 `$(globe) ProfileName` 图标，或使用命令面板：
 
-1. 在 VSCode 中打开一个 `.ipynb` 文件
-2. 按 `Cmd+Shift+P`（Mac）或 `Ctrl+Shift+P`（Windows/Linux）
-3. 输入：`翻译 Notebook Markdown 单元格（英译汉）`
-4. 执行命令，等待翻译完成
+1. `Cmd+Shift+P` -> 输入 `IPynb Translator: Add Profile` 创建配置。
+2. 输入 `IPynb Translator: Translate Notebook` 开始翻译。
 
-### 配置翻译引擎
+### 2. 管理配置 (Profiles)
 
-#### OpenAI（云端翻译）
+v0.3.0 引入了 Profile 系统，推荐使用 **命令面板** 进行管理，而不是手动编辑 JSON。
 
-```json
-{
-  "ipynbTranslator.engine": "openai",
-  "ipynbTranslator.openai.apiKey": "你的-API-Key",
-  "ipynbTranslator.openai.model": "gpt-4o-mini"
-}
-```
+- **添加配置**: `IPynb Translator: Add Profile`
+- **切换配置**: `IPynb Translator: Select Profile` (或点击状态栏)
+- **设置密钥**: `IPynb Translator: Set API Key` (安全存储)
 
-#### Ollama（本地翻译）🆕
+### 3. 配置示例 (`settings.json`)
+
+虽然推荐使用 UI，但你也可以在 `settings.json` 中预设 Profile 结构（**注意：不要填写 sensitive keys**）。
 
 ```json
-{
-  "ipynbTranslator.engine": "ollama",
-  "ipynbTranslator.ollama.model": "llama3",
-  "ipynbTranslator.ollama.endpoint": "http://localhost:11434"
-}
+"ipynbTranslator.profiles": [
+  {
+    "name": "My OpenAI",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "baseUrl": "https://api.openai.com/v1",
+    "customPrompt": "Translate to Chinese (Technical)"
+  },
+  {
+    "name": "Local DeepSeek",
+    "provider": "ollama",
+    "model": "deepseek-r1",
+    "endpoint": "http://localhost:11434"
+  }
+]
 ```
 
-> 💡 使用 Ollama 前，请确保已安装并启动 Ollama，并拉取模型：`ollama pull llama3`
+## 🔐 安全与隐私
 
-### 翻译模式
+**API Key 去哪了？**
+为了安全，v0.3.0 不再将 `apiKey` 或 `secretKey` 保存在 `settings.json` 中。
+- **存储**: 密钥存储在操作系统的安全钥匙串 (Keychain) 中。
+- **设置**: 使用命令 `IPynb Translator: Set API Key` 进行设置。
+- **删除**: 再次运行设置命令，留空并回车即可删除密钥。
 
-- **`bilingual`（默认）**：双语对照，原文保留在 HTML 注释中
-  ```markdown
-  <!-- Original English:
-  # Introduction to Data Science
-  -->
+## 📝 详细配置项
 
-  # 数据科学简介
-  ```
-
-- **`replace`**：直接替换为译文
-
-## 📝 配置项说明
-
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `ipynbTranslator.engine` | string | `mock` | 翻译引擎：`mock`、`openai` 或 `ollama` |
-| `ipynbTranslator.translationMode` | string | `bilingual` | 翻译模式：`bilingual` 或 `replace` |
-| `ipynbTranslator.openai.apiKey` | string | - | OpenAI API 密钥 |
-| `ipynbTranslator.openai.model` | string | `gpt-4o-mini` | OpenAI 模型名称 |
-| `ipynbTranslator.openai.baseUrl` | string | `https://api.openai.com/v1` | API 端点（支持代理） |
-| `ipynbTranslator.ollama.endpoint` | string | `http://localhost:11434` | Ollama API 端点 🆕 |
-| `ipynbTranslator.ollama.model` | string | `llama3` | Ollama 模型名称 🆕 |
-
-## 🎯 工作原理
-
-1. 检测当前是否是 Notebook 文件
-2. 遍历所有 Markdown 单元格
-3. 使用正则表达式检测是否包含中文，如包含则跳过
-4. **检查翻译缓存**，如命中则跳过 API 调用 🆕
-5. 调用选择的翻译引擎进行翻译
-6. **存入缓存**以供后续使用 🆕
-7. 根据翻译模式格式化结果
-8. 使用 VSCode Notebook API 更新单元格内容
+| 配置项 | 说明 |
+|--------|------|
+| `ipynbTranslator.profiles` | 翻译配置列表 (Array) |
+| `ipynbTranslator.activeProfile` | 当前激活的配置名称 (自动管理，勿手改) |
+| `ipynbTranslator.translationMode` | 翻译模式：`bilingual` (双语) 或 `replace` (替换) |
+| `ipynbTranslator.enableStatsLogging` | 是否记录翻译统计到 `.vscode/translator-stats.jsonl` |
 
 ## 📖 文档
 
-- [使用指南](docs/USAGE.md)：详细的使用说明和配置指南
-- [快速开始](docs/QUICKSTART.md)：快速测试和开发指南
-- [V0.1 技术文档](docs/V0.1-SUMMARY.md)：V0.1 实现细节
-- [V0.2 技术文档](docs/V0.2-SUMMARY.md)：V0.2 新增功能 🆕
+- [V0.3 技术文档 (Architecture)](docs/V0.3-SUMMARY.md) 🆕
+- [V0.2 技术文档](docs/V0.2-SUMMARY.md)
+- [V0.1 技术文档](docs/V0.1-SUMMARY.md)
 
 ## 🔮 未来计划
 
-以下功能计划在后续版本中实现：
+- [ ] 支持更多厂商（Google, DeepL）
+- [ ] 批量翻译多个文件
+- [ ] 术语表支持
 
-### 已完成 ✅
-- [x] 支持本地模型翻译（Ollama）
-- [x] 添加翻译缓存，避免重复翻译
+## 🤝 贡献与反馈
 
-### 计划中
-- [ ] 支持更多翻译引擎（百度、有道、Google 等）
-- [ ] 支持批量翻译多个 Notebook 文件
-- [ ] 支持选择性翻译（指定单元格范围）
-- [ ] 翻译历史记录和回滚功能
-- [ ] 自定义翻译提示词配置
-- [ ] 术语表和翻译记忆库
-- [ ] 翻译质量评估
-- [ ] 支持更多语言对（中译英、日译中等）
-
-欢迎在 [Issues](https://github.com/Zhou-Ruichen/Notebook-Translate/issues) 中提出建议！
-
-## ⚠️ 注意事项
-
-1. **备份数据**：翻译会修改原文件，建议先备份
-2. **API 费用**：使用 OpenAI 翻译会产生 API 调用费用
-3. **网络要求**：OpenAI 模式需要网络连接；Ollama 模式完全离线
-4. **格式保留**：翻译器会尽力保留 Markdown 格式，但可能不完美
-
-## 🤝 贡献
-
-欢迎贡献代码、报告问题或提出建议！
-
-1. Fork 本仓库
-2. 创建你的特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启一个 Pull Request
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
-
-## 📮 联系方式
-
-如有问题或建议，请通过以下方式联系：
-
-- 提交 [Issue](https://github.com/Zhou-Ruichen/Notebook-Translate/issues)
-- Pull Request
-
----
+欢迎提交 [Issue](https://github.com/Zhou-Ruichen/Notebook-Translate/issues) 或 Pull Request！
 
 **如果这个项目对你有帮助，请给个 ⭐️ Star 支持一下！**
