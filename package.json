@@ -3,7 +3,7 @@
   "displayName": "Jupyter Notebook Markdown 英译汉",
   "description": "将Jupyter Notebook中的Markdown单元格从英文翻译为中文",
   "version": "0.3.1",
-  "publisher": "your-publisher-name",
+  "publisher": "RuichenZhou",
   "repository": {
     "type": "git",
     "url": "https://github.com/Zhou-Ruichen/Notebook-Translate.git"
