@@ -2,10 +2,10 @@
 
 一个 VSCode 扩展，用于将 Jupyter Notebook (.ipynb) 文件中的英文 Markdown 单元格自动翻译成中文。
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/Zhou-Ruichen/Notebook-Translate/releases)
+[![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)](https://github.com/Zhou-Ruichen/Notebook-Translate/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## ✨ 功能特性（V0.3.0）
+## ✨ 功能特性（V0.3.1）
 
 - 🔐 **安全存储 (Security)**: API Key 不再明文存储，集成 VSCode Keychain 安全管理 🆕
 - 🗂️ **多配置管理 (Profiles)**: 支持保存多套翻译配置（OpenAI, Ollama, 百度），一键切换 🆕
@@ -23,16 +23,17 @@
 ### 1. 快速开始
 打开 `.ipynb` 文件，点击状态栏右下角的 `$(globe) ProfileName` 图标，或使用命令面板：
 
-1. `Cmd+Shift+P` -> 输入 `IPynb Translator: Add Profile` 创建配置。
+1. `Cmd+Shift+P` -> 输入 `IPynb Translator: Manage Profiles` 创建配置。
 2. 输入 `IPynb Translator: Translate Notebook` 开始翻译。
 
 ### 2. 管理配置 (Profiles)
 
-v0.3.0 引入了 Profile 系统，推荐使用 **命令面板** 进行管理，而不是手动编辑 JSON。
+v0.3.1 引入了统一的 **Manage Profiles** 命令，一站式完成“增删改查”：
 
-- **添加配置**: `IPynb Translator: Add Profile`
-- **切换配置**: `IPynb Translator: Select Profile` (或点击状态栏)
-- **设置密钥**: `IPynb Translator: Set API Key` (安全存储)
+- **`IPynb Translator: Manage Profiles`** ← 统一入口 🆕
+  - $(arrow-swap) **Switch Profile**: 切换配置（失败自动回滚）
+  - $(add) **Add New Profile**: 新建配置（向导式输入）
+  - $(trash) **Delete Profile**: 安全删除（同时清除密钥）
 
 ### 3. 配置示例 (`settings.json`)
 
@@ -56,13 +57,14 @@ v0.3.0 引入了 Profile 系统，推荐使用 **命令面板** 进行管理，�
 ]
 ```
 
-## 🔐 安全与隐私
+## 🔐 安全与隔离
 
 **API Key 去哪了？**
-为了安全，v0.3.0 不再将 `apiKey` 或 `secretKey` 保存在 `settings.json` 中。
+为了安全，v0.3.0+ 不再将 `apiKey` 或 `secretKey` 保存在 `settings.json` 中。
 - **存储**: 密钥存储在操作系统的安全钥匙串 (Keychain) 中。
-- **设置**: 使用命令 `IPynb Translator: Set API Key` 进行设置。
-- **删除**: 再次运行设置命令，留空并回车即可删除密钥。
+- **设置**: 使用 `Manage Profiles` -> `Add New Profile` 进行设置。
+- **删除**: 通过 `Manage Profiles` -> `Delete Profile` 安全删除（配置 + 密钥原子清除）🆕
+- **自动回滚**: 切换配置失败时，自动回退到上一个可用配置 🆕
 
 ## 📝 详细配置项
 
@@ -75,7 +77,7 @@ v0.3.0 引入了 Profile 系统，推荐使用 **命令面板** 进行管理，�
 
 ## 📖 文档
 
-- [V0.3 技术文档 (Architecture)](docs/V0.3-SUMMARY.md) 🆕
+- [V0.3 技术文档 (Architecture)](docs/V0.3-SUMMARY.md) 🆕 v0.3.1 补丁
 - [V0.2 技术文档](docs/V0.2-SUMMARY.md)
 - [V0.1 技术文档](docs/V0.1-SUMMARY.md)
 
