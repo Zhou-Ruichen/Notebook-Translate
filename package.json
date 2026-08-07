@@ -148,13 +148,15 @@
     "package": "npm run compile -- --minify",
     "watch": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node20 --sourcemap --watch",
     "typecheck": "tsc -p ./ --noEmit",
-    "test": "npm run typecheck"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/node": "^20.x",
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.28.1",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^4.1.10"
   },
   "allowScripts": {
     "esbuild@0.28.1": true

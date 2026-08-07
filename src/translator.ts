@@ -609,6 +609,6 @@ export class TranslationError extends Error {
  * @param text 原始 LLM 响应文本
  * @returns 清洗后的文本 (如果只有 think 内容则可能为空字符串)
  */
-function cleanThinkTags(text: string): string {
+export function cleanThinkTags(text: string): string {
     return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
