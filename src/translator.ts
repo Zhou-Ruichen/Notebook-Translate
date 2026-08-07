@@ -114,7 +114,7 @@ export class OpenAITranslator implements Translator {
 
         try {
             // 发送 HTTP 请求
-            const responseText = await httpRequest(url, {
+            const { text: responseText } = await httpFetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -151,49 +151,45 @@ export class OpenAITranslator implements Translator {
 }
 
 /**
- * 通用 HTTP 请求函数
- * 支持 http 和 https 协议
+ * 通用 HTTP 响应（基于全局 fetch）
  */
-function httpRequest(url: string, options: any): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const urlObj = new URL(url);
-        const isHttps = urlObj.protocol === 'https:';
-        const httpModule = isHttps ? require('https') : require('http');
+export interface HttpResponse {
+    status: number;
+    text: string;
+}
 
-        const reqOptions = {
-            hostname: urlObj.hostname,
-            port: urlObj.port || (isHttps ? 443 : 80),
-            path: urlObj.pathname + urlObj.search,
-            method: options.method || 'GET',
-            headers: options.headers || {}
-        };
-
-        const req = httpModule.request(reqOptions, (res: any) => {
-            let data = '';
-
-            res.on('data', (chunk: any) => {
-                data += chunk;
-            });
-
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve(data);
-                } else {
-                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-                }
-            });
-        });
-
-        req.on('error', (error: Error) => {
-            reject(error);
-        });
-
-        if (options.body) {
-            req.write(options.body);
+/**
+ * 基于 Node 18+ 全局 fetch 的请求函数，替代手写的 http/https 模块。
+ *
+ * 错误契约（下游 extension.ts / OllamaTranslator 依赖字符串匹配，不得破坏）：
+ * - HTTP 非 2xx：抛 `HTTP ${status}: ${body}`，保留 '401'/'Unauthorized' 等子串。
+ * - 网络失败（fetch 仅在此时抛）：从 error.cause 提取 code/hostname，
+ *   抛 `Network error (${code}) connecting to ${host}: ...`，其中 code 形如
+ *   'ECONNREFUSED'，确保 Ollama 的 ECONNREFUSED 分支仍命中。
+ */
+export async function httpFetch(url: string, init: RequestInit): Promise<HttpResponse> {
+    let resp: Response;
+    try {
+        resp = await fetch(url, init);
+    } catch (e: any) {
+        // 透传我们已构造的 HTTP 错误（不会发生在这里，但保持类型安全）
+        if (e instanceof Error && e.message.startsWith('HTTP ')) {
+            throw e;
         }
+        const code = e?.cause?.code ?? 'UNKNOWN';
+        const host = e?.cause?.hostname ?? safeHost(url);
+        throw new Error(`Network error (${code}) connecting to ${host}: ${e?.message ?? e}`);
+    }
 
-        req.end();
-    });
+    const text = await resp.text();
+    if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${text}`);
+    }
+    return { status: resp.status, text };
+}
+
+function safeHost(url: string): string {
+    try { return new URL(url).hostname; } catch { return 'unknown'; }
 }
 
 /**
@@ -241,7 +237,7 @@ export class OllamaTranslator implements Translator {
 
         try {
             // 发送 HTTP 请求
-            const responseText = await httpRequest(url, {
+            const { text: responseText } = await httpFetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -376,13 +372,8 @@ export class BaiduTranslator implements Translator {
         const url = `https://fanyi-api.baidu.com/api/trans/vip/translate?${params.toString()}`;
 
         try {
-            // 发送 HTTP 请求
-            const responseText = await httpRequest(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            });
+            // 发送 HTTP 请求（GET，参数已在 query string，无需 Content-Type）
+            const { text: responseText } = await httpFetch(url, { method: 'GET' });
 
             const data = JSON.parse(responseText);
 
