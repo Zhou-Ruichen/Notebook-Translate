@@ -1,14 +1,11 @@
-.vscode/**
-.vscode-test/**
-out/test/**
-src/**
-.gitignore
-.yarnrc
-vsc-extension-quickstart.md
-**/tsconfig.json
-**/.eslintrc.json
-**/*.map
-**/*.ts
-extension.ts.bak
-test-notebook.ipynb
-node_modules/**
+# Whitelist: ship only the bundled extension, webview assets, and metadata.
+# esbuild bundles src/** into a single out/extension.js, so sources are excluded.
+**
+
+!out/**
+!media/**
+!README.md
+!README.en-US.md
+!LICENSE
+!package.json
+!CHANGELOG.md

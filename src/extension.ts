@@ -1,11 +1,11 @@
 /**
  * VSCode 扩展入口文件
- * Jupyter Notebook Markdown 英译汉扩展 V0.2
+ * Jupyter Notebook Markdown 英译汉扩展
  */
 
 import * as vscode from 'vscode';
 import { hasChinese } from './utils';
-import { Translator, MockTranslator, OpenAITranslator, OllamaTranslator, BaiduTranslator, formatTranslation, TranslationMode } from './translator';
+import { Translator, OpenAITranslator, OllamaTranslator, BaiduTranslator, formatTranslation, TranslationMode } from './translator';
 import { TranslationCache } from './cache';
 import { ProfileManager } from './profileManager';
 import { TranslatorProfile, TranslationProvider } from './types';
@@ -83,15 +83,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    // 注册命令：清除所有翻译（可选功能）
-    const cleanCmd = vscode.commands.registerCommand(
-        'ipynbTranslator.cleanAllTranslations',
-        () => {
-            vscode.window.showInformationMessage('Clean Translations feature is coming soon.');
-        }
-    );
-
-    context.subscriptions.push(translateCmd, testConnectionCmd, manageProfilesCmd, selectProfileCmd, cleanCmd, statusBar);
+    context.subscriptions.push(translateCmd, testConnectionCmd, manageProfilesCmd, selectProfileCmd, statusBar);
 }
 
 /**
@@ -292,65 +284,6 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
             );
         }
     );
-}
-
-/**
- * 根据配置创建翻译器实例
- * @param engine 翻译引擎类型
- * @param config VSCode 配置对象
- * @returns 翻译器实例
- */
-function createTranslator(engine: string, config: vscode.WorkspaceConfiguration): Translator {
-    switch (engine) {
-        case 'mock':
-            // Mock 翻译器，用于调试
-            return new MockTranslator();
-
-        case 'openai': {
-            // OpenAI 翻译器（支持所有 OpenAI 兼容服务）
-            const apiKey = config.get<string>('openai.apiKey', '');
-            const model = config.get<string>('openai.model', 'gpt-4o-mini');
-            const baseUrl = config.get<string>('openai.baseUrl', 'https://api.openai.com/v1');
-
-            if (!apiKey) {
-                throw new Error(
-                    '未配置 API Key。请在设置中配置 ipynbTranslator.openai.apiKey，或使用「选择翻译引擎」命令配置'
-                );
-            }
-
-            return new OpenAITranslator(apiKey, model, baseUrl);
-        }
-
-        case 'ollama': {
-            // Ollama 本地模型翻译器
-            const endpoint = config.get<string>('ollama.endpoint', 'http://localhost:11434');
-            const model = config.get<string>('ollama.model', 'llama3');
-
-            return new OllamaTranslator(endpoint, model);
-        }
-
-        case 'baidu': {
-            // 百度翻译
-            const appId = config.get<string>('baidu.appId', '');
-            const secretKey = config.get<string>('baidu.secretKey', '');
-
-            if (!appId) {
-                throw new Error(
-                    '未配置百度翻译 APP ID。请在设置中配置 ipynbTranslator.baidu.appId'
-                );
-            }
-            if (!secretKey) {
-                throw new Error(
-                    '未配置百度翻译密钥。请在设置中配置 ipynbTranslator.baidu.secretKey'
-                );
-            }
-
-            return new BaiduTranslator(appId, secretKey);
-        }
-
-        default:
-            throw new Error(`未知的翻译引擎: ${engine}`);
-    }
 }
 
 /**

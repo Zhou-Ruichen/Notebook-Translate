@@ -2,14 +2,14 @@
   "name": "ipynb-translator",
   "displayName": "Jupyter Notebook Markdown 英译汉",
   "description": "将Jupyter Notebook中的Markdown单元格从英文翻译为中文",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "RuichenZhou",
   "repository": {
     "type": "git",
     "url": "https://github.com/Zhou-Ruichen/Notebook-Translate.git"
   },
   "engines": {
-    "vscode": "^1.60.0"
+    "vscode": "^1.90.0"
   },
   "categories": [
     "Other"
@@ -35,10 +35,6 @@
       {
         "command": "ipynbTranslator.testConnection",
         "title": "IPynb Translator: Test Connection"
-      },
-      {
-        "command": "ipynbTranslator.cleanAllTranslations",
-        "title": "IPynb Translator: Clean Translations"
       }
     ],
     "configuration": {
@@ -121,15 +117,20 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile",
-    "test": "node ./out/test/runTest.js"
+    "vscode:prepublish": "npm run package",
+    "compile": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node20 --sourcemap",
+    "package": "npm run compile -- --minify",
+    "watch": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --target=node20 --sourcemap --watch",
+    "typecheck": "tsc -p ./ --noEmit",
+    "test": "npm run typecheck"
   },
   "devDependencies": {
-    "@types/vscode": "^1.60.0",
-    "@types/node": "^14.x",
-    "typescript": "^4.3.2"
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^5.4.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
   }
 }
