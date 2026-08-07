@@ -2,7 +2,7 @@
 # esbuild bundles src/** into a single out/extension.js, so sources are excluded.
 **
 
-!out/**
+!out/extension.js
 !media/**
 !README.md
 !README.en-US.md

@@ -37,6 +37,32 @@
         "title": "IPynb Translator: Test Connection"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ipynbTranslator",
+          "title": "Notebook Translator",
+          "icon": "$(translations)"
+        }
+      ]
+    },
+    "views": {
+      "ipynbTranslator": [
+        {
+          "id": "ipynbTranslator.profilesView",
+          "name": "Profiles"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "ipynbTranslator.manageProfiles",
+          "when": "view == ipynbTranslator.profilesView",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Jupyter Notebook Markdown 翻译器",
       "properties": {

@@ -12,7 +12,7 @@ import { TranslatorProfile, TranslationProvider } from './types';
 import { migrateSettings } from './migration';
 import { TranslationStats } from './statistics';
 import { TranslatorStatusBar } from './statusBar';
-import { manageProfiles } from './commands/manageProfiles';
+import { ProfilePanelProvider } from './webview/profilePanel';
 
 // 全局实例
 let profileManager: ProfileManager;
@@ -51,6 +51,14 @@ export async function activate(context: vscode.ExtensionContext) {
     // 更新初始状态
     statusBar.update(profileManager.getActiveProfileName() || 'No Profile', 'ready');
 
+    // 注册 Profile 管理 Webview 面板（活动栏视图）
+    const profilePanel = new ProfilePanelProvider(context.extensionUri, profileManager);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            ProfilePanelProvider.viewType, profilePanel
+        )
+    );
+
     // 注册命令：翻译 Notebook Markdown 单元格（英译汉）
     const translateCmd = vscode.commands.registerCommand(
         'ipynbTranslator.translateMarkdownEnToZh',
@@ -67,20 +75,16 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    // 注册命令：管理翻译配置 (统一入口)
+    // 注册命令：管理/选择配置 → 打开并聚焦 Webview 面板
+    const revealPanel = async () => {
+        await vscode.commands.executeCommand('workbench.view.extension.ipynbTranslator');
+        profilePanel.show();
+    };
     const manageProfilesCmd = vscode.commands.registerCommand(
-        'ipynbTranslator.manageProfiles',
-        async () => {
-            await manageProfiles(profileManager);
-        }
+        'ipynbTranslator.manageProfiles', revealPanel
     );
-
-    // 注册命令：选择配置 (供状态栏点击使用，重定向到 manageProfiles)
     const selectProfileCmd = vscode.commands.registerCommand(
-        'ipynbTranslator.selectProfile',
-        async () => {
-            await manageProfiles(profileManager);
-        }
+        'ipynbTranslator.selectProfile', revealPanel
     );
 
     context.subscriptions.push(translateCmd, testConnectionCmd, manageProfilesCmd, selectProfileCmd, statusBar);
