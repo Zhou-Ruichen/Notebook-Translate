@@ -5,7 +5,7 @@
 
 import * as vscode from 'vscode';
 import { hasChinese } from './utils';
-import { Translator, OpenAITranslator, OllamaTranslator, BaiduTranslator, formatTranslation, TranslationMode } from './translator';
+import { Translator, OpenAITranslator, OllamaTranslator, BaiduTranslator, formatTranslation, TranslationMode, CancelledError } from './translator';
 import { TranslationCache } from './cache';
 import { ProfileManager } from './profileManager';
 import { TranslatorProfile, TranslationProvider } from './types';
@@ -149,7 +149,7 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
             '创建配置'
         );
         if (action === '创建配置') {
-            await vscode.commands.executeCommand('ipynbTranslator.addProfile');
+            await vscode.commands.executeCommand('ipynbTranslator.manageProfiles');
         }
         return;
     }
@@ -165,10 +165,14 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
         return;
     }
 
-    // 4. 获取所有 Markdown 单元格
-    const markdownCells = notebook.getCells().filter(
-        cell => cell.kind === vscode.NotebookCellKind.Markup
-    );
+    // 4. 获取所有 Markdown 单元格（用 cellCount/cellAt 替代已废弃的 getCells()）
+    const markdownCells: vscode.NotebookCell[] = [];
+    for (let i = 0; i < notebook.cellCount; i++) {
+        const cell = notebook.cellAt(i);
+        if (cell.kind === vscode.NotebookCellKind.Markup) {
+            markdownCells.push(cell);
+        }
+    }
 
     if (markdownCells.length === 0) {
         vscode.window.showInformationMessage('当前 Notebook 中没有 Markdown 单元格');
@@ -187,6 +191,10 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
             let translatedCount = 0;
             let skippedCount = 0;
             let cachedCount = 0;
+
+            // 把 VSCode 取消令牌桥接到 fetch 的 AbortSignal
+            const abortController = new AbortController();
+            token.onCancellationRequested(() => abortController.abort());
 
             // 初始化翻译缓存
             const cache = new TranslationCache(context);
@@ -233,14 +241,28 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
                         translatedText = cachedTranslation;
                         cachedCount++;
                     } else {
-                        // 缓存未命中，调用翻译器翻译
+                        // 缓存未命中，翻译。优先用流式（可中断、可感知进度），
+                        // 不支持流式的翻译器（百度）回退到请求/响应。
                         const startTime = Date.now();
-                        translatedText = await translator.translate(cellText);
+                        if (translator.translateStream) {
+                            translatedText = await translator.translateStream(
+                                cellText,
+                                // 流式回调：只更新进度文案，不写单元格（避免逐 token 闪烁）
+                                (chunk) => {
+                                    progress.report({
+                                        message: `翻译中... (${i + 1}/${totalCells}) ${chunk.length} 字符`
+                                    });
+                                },
+                                abortController.signal
+                            );
+                        } else {
+                            translatedText = await translator.translate(cellText);
+                        }
                         const duration = Date.now() - startTime;
 
                         // 记录统计
                         stats.log({
-                            model: activeProfile.provider === 'openai' ? (activeProfile as any).model : (activeProfile as any).model || 'unknown',
+                            model: (activeProfile as any).model || 'unknown',
                             profileName: activeProfile.name,
                             charCount: cellText.length,
                             durationMs: duration
@@ -255,15 +277,20 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
                     // 10. 格式化翻译结果（根据翻译模式）
                     const formattedText = formatTranslation(cellText, translatedText, translationMode);
 
-                    // 11. 使用 WorkspaceEdit 更新单元格内容
-                    const edit = new vscode.WorkspaceEdit();
-                    const fullRange = new vscode.Range(
-                        0, 0,
-                        cell.document.lineCount, 0
+                    // 11. 用 NotebookEdit.replaceCells 写回整个单元格（替代已废弃的
+                    // cell.document 文档级编辑）。一次原子替换，撤销时单步回退。
+                    const newCell = new vscode.NotebookCellData(
+                        vscode.NotebookCellKind.Markup,
+                        formattedText,
+                        'markdown'
                     );
-
-                    // 替换整个单元格的内容
-                    edit.replace(cell.document.uri, fullRange, formattedText);                    // 应用编辑
+                    const edit = new vscode.WorkspaceEdit();
+                    edit.set(notebook.uri, [
+                        vscode.NotebookEdit.replaceCells(
+                            new vscode.NotebookRange(cell.index, cell.index + 1),
+                            [newCell]
+                        )
+                    ]);
                     const success = await vscode.workspace.applyEdit(edit);
 
                     if (!success) {
@@ -271,6 +298,10 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
                     }
 
                 } catch (error) {
+                    if (error instanceof CancelledError || token.isCancellationRequested) {
+                        vscode.window.showWarningMessage('翻译已取消');
+                        return;
+                    }
                     console.error(`单元格 ${i + 1} 翻译失败:`, error);
                     const errorMessage = error instanceof Error ? error.message : '未知错误';
                     vscode.window.showErrorMessage(`翻译单元格 ${i + 1} 失败: ${errorMessage}`);

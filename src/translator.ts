@@ -30,11 +30,62 @@ export function formatTranslation(originalText: string, translatedText: string, 
  */
 export interface Translator {
     /**
-     * 翻译文本
+     * 翻译文本（请求/响应模式）
      * @param text 待翻译的文本
      * @returns 翻译后的文本
      */
     translate(text: string): Promise<string>;
+
+    /**
+     * 流式翻译（可选）。逐 token 回调，返回最终完整译文。
+     * 不实现的翻译器（如百度）由调用方回退到 translate()。
+     * @param text 待翻译的文本
+     * @param onToken 每收到一段译文片段时回调
+     * @param signal 可选的中断信号，触发后应尽快中止请求
+     */
+    translateStream?(text: string, onToken: (chunk: string) => void, signal?: AbortSignal): Promise<string>;
+}
+
+/**
+ * 中断错误：流式翻译被 AbortSignal 取消时抛出
+ */
+export class CancelledError extends Error {
+    constructor() {
+        super('Translation cancelled');
+        this.name = 'CancelledError';
+    }
+}
+
+/**
+ * 读取 fetch 流式响应体，按行产出字符串。
+ * 处理跨 chunk 的不完整行（缓冲到分隔符）。
+ * @param body fetch 响应的 ReadableStream
+ * @param onLine 每完整一行回调（不含换行符）
+ * @param signal 中断信号
+ */
+async function readLines(body: ReadableStream<Uint8Array>, onLine: (line: string) => void, signal?: AbortSignal): Promise<void> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+        while (true) {
+            if (signal?.aborted) { throw new CancelledError(); }
+            const { done, value } = await reader.read();
+            if (done) { break; }
+            buffer += decoder.decode(value, { stream: true });
+            let nl: number;
+            // 按换行符切，保留最后一段不完整的在 buffer
+            while ((nl = buffer.indexOf('\n')) >= 0) {
+                const line = buffer.slice(0, nl);
+                buffer = buffer.slice(nl + 1);
+                onLine(line);
+            }
+        }
+        // flush 残留
+        if (buffer.length > 0) { onLine(buffer); }
+    } finally {
+        reader.releaseLock();
+    }
 }
 
 /**
@@ -147,6 +198,69 @@ export class OpenAITranslator implements Translator {
             }
             throw error;
         }
+    }
+
+    /**
+     * 流式翻译：调用 OpenAI chat/completions（stream:true），响应为 SSE。
+     * 每行的 data: {json} 中 choices[0].delta.content 携带片段。
+     */
+    async translateStream(text: string, onToken: (chunk: string) => void, signal?: AbortSignal): Promise<string> {
+        const url = `${this.baseUrl}/chat/completions`;
+        const userPrompt = `Please translate the following Markdown content:\n\n${text}`;
+        const requestBody = {
+            model: this.model,
+            messages: [
+                { role: "system", content: this.systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
+            temperature: 0.3,
+            stream: true
+        };
+
+        let resp: Response;
+        try {
+            resp = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.apiKey}`
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+        } catch (e: any) {
+            if (signal?.aborted) { throw new CancelledError(); }
+            throw new Error(`Translation failed: ${e?.message ?? e}`);
+        }
+        if (!resp.ok || !resp.body) {
+            const detail = await resp.text().catch(() => '');
+            throw new Error(`Translation failed: HTTP ${resp.status}: ${detail}`);
+        }
+
+        let result = '';
+        await readLines(resp.body, (line) => {
+            // SSE 行形如 "data: {...}"，遇 [DONE] 结束；空行跳过
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) { return; }
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') { return; }
+            try {
+                const chunk = JSON.parse(payload);
+                const token = chunk?.choices?.[0]?.delta?.content;
+                if (token) {
+                    result += token;
+                    onToken(token);
+                }
+            } catch {
+                // 忽略无法解析的分片（如心跳注释行）
+            }
+        }, signal);
+
+        const cleaned = cleanThinkTags(result);
+        if (!cleaned && result.trim().length > 0) {
+            throw new Error('Translation Empty (Reasoning only)');
+        }
+        return cleaned;
     }
 }
 
@@ -283,6 +397,76 @@ export class OllamaTranslator implements Translator {
             }
             throw error;
         }
+    }
+
+    /**
+     * 流式翻译：调用 Ollama /api/chat（stream:true），响应为 ndjson，
+     * 每行 {message:{content:"..."}, done:false}，done:true 结束。
+     */
+    async translateStream(text: string, onToken: (chunk: string) => void, signal?: AbortSignal): Promise<string> {
+        const url = `${this.endpoint}/api/chat`;
+        const userPrompt = `Please translate the following Markdown content:\n\n${text}`;
+        const requestBody = {
+            model: this.model,
+            messages: [
+                { role: "system", content: this.systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
+            stream: true,
+            options: { temperature: 0.3 }
+        };
+
+        let resp: Response;
+        try {
+            resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+        } catch (e: any) {
+            if (signal?.aborted) { throw new CancelledError(); }
+            // 复用 translate() 的友好错误（含 ECONNREFUSED / 连接 子串）
+            const code = e?.cause?.code ?? 'UNKNOWN';
+            if (code === 'ECONNREFUSED') {
+                throw new Error(
+                    `Network error (ECONNREFUSED) connecting to ${this.endpoint}`
+                );
+            }
+            throw new Error(`Translation failed: ${e?.message ?? e}`);
+        }
+        if (!resp.ok || !resp.body) {
+            const detail = await resp.text().catch(() => '');
+            throw new Error(`HTTP ${resp.status}: ${detail}`);
+        }
+
+        let result = '';
+        await readLines(resp.body, (line) => {
+            const trimmed = line.trim();
+            if (!trimmed) { return; }
+            try {
+                const chunk = JSON.parse(trimmed);
+                if (chunk.error) {
+                    throw new Error(`Ollama API error: ${chunk.error}`);
+                }
+                const token = chunk?.message?.content;
+                if (token) {
+                    result += token;
+                    onToken(token);
+                }
+            } catch (e) {
+                // JSON.parse 失败或业务错误：业务错误重新抛出，解析噪声吞掉
+                if (e instanceof Error && e.message.includes('Ollama API error')) {
+                    throw e;
+                }
+            }
+        }, signal);
+
+        const cleaned = cleanThinkTags(result);
+        if (!cleaned && result.trim().length > 0) {
+            throw new Error('Translation Empty (Reasoning only)');
+        }
+        return cleaned;
     }
 }
 
