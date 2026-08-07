@@ -57,51 +57,6 @@ export class MockTranslator implements Translator {
 }
 
 /**
- * 简单的 HTTP 请求函数
- * 使用 Node.js 的 https 模块
- */
-function httpsRequest(url: string, options: any): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const https = require('https');
-        const urlObj = new URL(url);
-
-        const reqOptions = {
-            hostname: urlObj.hostname,
-            port: urlObj.port || 443,
-            path: urlObj.pathname + urlObj.search,
-            method: options.method || 'GET',
-            headers: options.headers || {}
-        };
-
-        const req = https.request(reqOptions, (res: any) => {
-            let data = '';
-
-            res.on('data', (chunk: any) => {
-                data += chunk;
-            });
-
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve(data);
-                } else {
-                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-                }
-            });
-        });
-
-        req.on('error', (error: Error) => {
-            reject(error);
-        });
-
-        if (options.body) {
-            req.write(options.body);
-        }
-
-        req.end();
-    });
-}
-
-/**
  * 默认 System Prompt
  */
 const DEFAULT_SYSTEM_PROMPT = `You are a professional technical translator specializing in translating Jupyter Notebook documentation from English to Chinese.
@@ -159,7 +114,7 @@ export class OpenAITranslator implements Translator {
 
         try {
             // 发送 HTTP 请求
-            const responseText = await httpsRequest(url, {
+            const responseText = await httpRequest(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

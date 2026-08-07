@@ -4,11 +4,14 @@ out/
 .vscode-test/
 *.log
 .DS_Store
-# 忽略统计日志 (v0.3.0 新增)
+
+# 统计日志与本地工作区配置
 .vscode/translator-stats.jsonl
-
-# 忽略本地工作区配置 (包含你的 Profile 列表)
 .vscode/settings.json
-
-# 忽略其他可能的系统文件
 *.jsonl
+
+# 编辑器/AI 工具本地产物，不入库
+.claude/
+.serena/
+.trellis/
+.idea/

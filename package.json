@@ -110,6 +110,12 @@
           ],
           "default": "bilingual",
           "description": "翻译模式：replace（替换原文）或 bilingual（双语对照）"
+        },
+        "ipynbTranslator.enableStatsLogging": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否记录翻译统计到 .vscode/translator-stats.jsonl",
+          "markdownDescription": "Append per-translation stats (model, profile, char count, latency) to `.vscode/translator-stats.jsonl`."
         }
       }
     }

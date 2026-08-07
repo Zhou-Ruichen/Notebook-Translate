@@ -4,6 +4,7 @@
 
 [![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)](https://github.com/Zhou-Ruichen/Notebook-Translate/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![English](https://img.shields.io/badge/docs-English-blue.svg)](README.en-US.md)
 
 ## ✨ 功能特性（V0.3.1）
 
