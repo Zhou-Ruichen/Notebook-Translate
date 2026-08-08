@@ -142,7 +142,12 @@ function renderForm() {
 function save() {
     const p = editing;
     const provider = p.provider || 'openai';
-    const profile = { name: val('name'), provider };
+    const name = val('name');
+    if (!name) {
+        toast('Name 不能为空', true);
+        return;
+    }
+    const profile = { name, provider };
     if (provider === 'openai') {
         profile.baseUrl = val('baseUrl');
         profile.model = val('model');

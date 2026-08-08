@@ -89,6 +89,21 @@ async function readLines(body: ReadableStream<Uint8Array>, onLine: (line: string
 }
 
 /**
+ * 校验流式累积结果：清洗 think 标签后若为空，根据原始内容给出明确错误，
+ * 避免把空串写回单元格导致原文丢失。
+ * - 原始有内容但清洗后空：只有推理链，无有效译文。
+ * - 原始为空/纯空白：模型未产出任何内容。
+ */
+export function validateStreamResult(result: string): string {
+    const cleaned = cleanThinkTags(result);
+    if (cleaned) { return cleaned; }
+    if (result.trim()) {
+        throw new Error('Translation Empty (Reasoning only)');
+    }
+    throw new Error('Translation Empty (No content from model)');
+}
+
+/**
  * Mock 翻译器（模拟翻译）
  * 用于调试和无网络环境，直接在原文前添加标记
  */
@@ -244,23 +259,24 @@ export class OpenAITranslator implements Translator {
             if (!trimmed || !trimmed.startsWith('data:')) { return; }
             const payload = trimmed.slice(5).trim();
             if (payload === '[DONE]') { return; }
+            let chunk: any;
             try {
-                const chunk = JSON.parse(payload);
-                const token = chunk?.choices?.[0]?.delta?.content;
-                if (token) {
-                    result += token;
-                    onToken(token);
-                }
+                chunk = JSON.parse(payload);
             } catch {
-                // 忽略无法解析的分片（如心跳注释行）
+                return; // 无法解析的行（心跳/注释）跳过
+            }
+            // 流内错误分片：与 Ollama 一致地抛出，而非静默吞掉
+            if (chunk?.error) {
+                throw new Error(`OpenAI API error: ${chunk.error.message ?? chunk.error}`);
+            }
+            const token = chunk?.choices?.[0]?.delta?.content;
+            if (token) {
+                result += token;
+                onToken(token);
             }
         }, signal);
 
-        const cleaned = cleanThinkTags(result);
-        if (!cleaned && result.trim().length > 0) {
-            throw new Error('Translation Empty (Reasoning only)');
-        }
-        return cleaned;
+        return validateStreamResult(result);
     }
 }
 
@@ -462,11 +478,7 @@ export class OllamaTranslator implements Translator {
             }
         }, signal);
 
-        const cleaned = cleanThinkTags(result);
-        if (!cleaned && result.trim().length > 0) {
-            throw new Error('Translation Empty (Reasoning only)');
-        }
-        return cleaned;
+        return validateStreamResult(result);
     }
 }
 

@@ -78,7 +78,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // 注册命令：管理/选择配置 → 打开并聚焦 Webview 面板
     const revealPanel = async () => {
         await vscode.commands.executeCommand('workbench.view.extension.ipynbTranslator');
-        profilePanel.show();
+        await profilePanel.show();
     };
     const manageProfilesCmd = vscode.commands.registerCommand(
         'ipynbTranslator.manageProfiles', revealPanel

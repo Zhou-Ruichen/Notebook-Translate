@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { httpFetch, cleanThinkTags, formatTranslation } from './translator';
+import { httpFetch, cleanThinkTags, formatTranslation, validateStreamResult } from './translator';
 import { hasChinese } from './utils';
 
 /**
@@ -81,6 +81,22 @@ describe('cleanThinkTags', () => {
 
     it('preserves text when no think tags present', () => {
         expect(cleanThinkTags('plain text')).toBe('plain text');
+    });
+});
+
+describe('validateStreamResult', () => {
+    // 锁定数据丢失路径：流式结果为空时必须抛错，不得返回空串写回单元格
+    it('returns cleaned text when result has content', () => {
+        expect(validateStreamResult('你好')).toBe('你好');
+    });
+
+    it('throws "Reasoning only" when result is pure think-chain', () => {
+        expect(() => validateStreamResult('<think>thoughts</think>')).toThrow('Reasoning only');
+    });
+
+    it('throws when result is empty or whitespace (prevents cell data loss)', () => {
+        expect(() => validateStreamResult('')).toThrow('No content from model');
+        expect(() => validateStreamResult('   \n  ')).toThrow('No content from model');
     });
 });
 
