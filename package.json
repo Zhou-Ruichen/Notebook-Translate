@@ -29,6 +29,11 @@
         "icon": "$(gear)"
       },
       {
+        "command": "ipynbTranslator.newProfile",
+        "title": "IPynb Translator: New Profile",
+        "icon": "$(add)"
+      },
+      {
         "command": "ipynbTranslator.translateMarkdownEnToZh",
         "title": "IPynb Translator: Translate Notebook"
       },
@@ -57,7 +62,7 @@
     "menus": {
       "view/title": [
         {
-          "command": "ipynbTranslator.manageProfiles",
+          "command": "ipynbTranslator.newProfile",
           "when": "view == ipynbTranslator.profilesView",
           "group": "navigation"
         }

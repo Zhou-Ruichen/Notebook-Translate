@@ -28,6 +28,7 @@ type IncomingMessage =
     | { type: 'getProfiles' }
     | { type: 'saveProfile'; profile: TranslatorProfile }
     | { type: 'saveKey'; name: string; key: string }
+    | { type: 'clearKey'; name: string }
     | { type: 'deleteProfile'; name: string }
     | { type: 'activateProfile'; name: string }
     | { type: 'testConnection'; name: string };
@@ -65,6 +66,12 @@ export class ProfilePanelProvider implements vscode.WebviewViewProvider {
         this.view?.webview.postMessage({ type: 'profiles', profiles });
     }
 
+    /** 视图标题栏「+」按钮：打开视图并直接进入新建表单 */
+    async startNewProfile(): Promise<void> {
+        await this.show();
+        this.view?.webview.postMessage({ type: 'newProfile' });
+    }
+
     private async handleMessage(msg: IncomingMessage): Promise<void> {
         switch (msg.type) {
             case 'getProfiles':
@@ -75,6 +82,10 @@ export class ProfilePanelProvider implements vscode.WebviewViewProvider {
                 break;
             case 'saveKey':
                 await this.profileManager.setApiKey(msg.name, msg.key);
+                await this.pushProfiles();
+                break;
+            case 'clearKey':
+                await this.profileManager.deleteApiKey(msg.name);
                 await this.pushProfiles();
                 break;
             case 'deleteProfile':
@@ -129,23 +140,24 @@ export class ProfilePanelProvider implements vscode.WebviewViewProvider {
     private async handleActivate(name: string): Promise<void> {
         const originalActive = this.profileManager.getActiveProfileName();
         await this.profileManager.setActiveProfile(name);
-        // 复用已注册的 testConnection 命令做静默连通性测试
-        const success = await vscode.commands.executeCommand<boolean>(
+        // 复用已注册的 testConnection 命令做静默连通性测试（带错误详情）
+        const result = await vscode.commands.executeCommand<{ ok: boolean; error?: string }>(
             'ipynbTranslator.testConnection', true
         );
-        if (success === false) {
+        if (result?.ok === false) {
             // 失败自动回滚到上一个可用配置
             const rolledBackTo = await this.profileManager.rollbackToPrevious();
             if (!rolledBackTo) {
                 // 无历史可回滚：恢复到激活前的 active，避免坏 profile 留作当前
                 await this.profileManager.setActiveProfile(originalActive);
             }
+            const detail = result.error ?? '未知原因';
             this.view?.webview.postMessage({
                 type: 'activated',
                 ok: false,
                 error: rolledBackTo
-                    ? `连接失败，已回滚到 "${rolledBackTo}"`
-                    : `连接失败，已恢复到 "${originalActive || '无配置'}"`,
+                    ? `${detail}。已回滚到 "${rolledBackTo}"`
+                    : `${detail}。已恢复到 "${originalActive || '无配置'}"`,
             });
         } else {
             this.view?.webview.postMessage({ type: 'activated', ok: true });
@@ -158,7 +170,7 @@ export class ProfilePanelProvider implements vscode.WebviewViewProvider {
         const originalActive = this.profileManager.getActiveProfileName();
         await this.profileManager.setActiveProfile(name);
         const start = Date.now();
-        const success = await vscode.commands.executeCommand<boolean>(
+        const result = await vscode.commands.executeCommand<{ ok: boolean; error?: string }>(
             'ipynbTranslator.testConnection', true
         );
         // 无论成败都恢复原 active（与 handleActivate 不同，测试是只读操作）
@@ -167,7 +179,8 @@ export class ProfilePanelProvider implements vscode.WebviewViewProvider {
         }
         this.view?.webview.postMessage({
             type: 'testResult',
-            ok: success === true,
+            ok: result?.ok === true,
+            error: result?.error,
             latencyMs: Date.now() - start,
         });
         await this.pushProfiles();

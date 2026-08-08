@@ -152,6 +152,13 @@ textarea {
     color: var(--vscode-errorForeground, #f85149);
 }
 
+.btn.subtle {
+    font-size: 11px;
+    padding: 4px 8px;
+    opacity: 0.85;
+    margin-bottom: 8px;
+}
+
 .toast {
     position: fixed;
     bottom: var(--pad);

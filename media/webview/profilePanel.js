@@ -28,7 +28,11 @@ window.addEventListener('message', (event) => {
             if (!msg.ok) toast(msg.error || '激活失败', true);
             break;
         case 'testResult':
-            toast(msg.ok ? `连接成功 (${msg.latencyMs}ms)` : '连接失败', !msg.ok);
+            toast(msg.ok ? `连接成功 (${msg.latencyMs}ms)` : (msg.error || '连接失败'), !msg.ok);
+            break;
+        case 'newProfile':
+            editing = { name: '', provider: 'openai', hasKey: false };
+            render();
             break;
     }
 });
@@ -126,6 +130,20 @@ function renderForm() {
     } else { // baidu
         form.appendChild(field('appId', 'App ID', p.appId || ''));
         form.appendChild(field('secretKey', 'Secret Key', '', 'password'));
+    }
+
+    // 已存密钥时提供显式清除入口（避免靠"清空输入框"隐式触发的歧义）
+    const hasSecretField = provider === 'openai' || provider === 'baidu';
+    if (hasSecretField && p.hasKey) {
+        const clearKeyBtn = el('button', 'btn danger subtle', '清除已存密钥');
+        clearKeyBtn.onclick = () => {
+            if (confirm(`确认清除 "${name || p.name}" 的密钥？`)) {
+                vscode.postMessage({ type: 'clearKey', name: p.name });
+                editing = null;
+                render();
+            }
+        };
+        form.appendChild(clearKeyBtn);
     }
 
     const btnRow = el('div', 'btn-row');

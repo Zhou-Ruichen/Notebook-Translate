@@ -86,8 +86,14 @@ export async function activate(context: vscode.ExtensionContext) {
     const selectProfileCmd = vscode.commands.registerCommand(
         'ipynbTranslator.selectProfile', revealPanel
     );
+    const newProfileCmd = vscode.commands.registerCommand(
+        'ipynbTranslator.newProfile', async () => {
+            await vscode.commands.executeCommand('workbench.view.extension.ipynbTranslator');
+            await profilePanel.startNewProfile();
+        }
+    );
 
-    context.subscriptions.push(translateCmd, testConnectionCmd, manageProfilesCmd, selectProfileCmd, statusBar);
+    context.subscriptions.push(translateCmd, testConnectionCmd, manageProfilesCmd, selectProfileCmd, newProfileCmd, statusBar);
 }
 
 /**
@@ -329,14 +335,14 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
  * @param silent 是否静默测试（不显示 Success 弹窗，只更新状态栏）
  * @returns 测试是否成功
  */
-async function testTranslatorConnection(silent: boolean = false): Promise<boolean> {
+async function testTranslatorConnection(silent: boolean = false): Promise<TestResult> {
     profileManager.refresh();
     const activeProfile = profileManager.getActiveProfile();
 
     if (!activeProfile) {
         if (!silent) vscode.window.showWarningMessage('尚未配置翻译服务，请先创建配置');
         statusBar.update('No Profile', 'error');
-        return false;
+        return { ok: false, error: '尚未配置翻译服务' };
     }
 
     statusBar.update(activeProfile.name, 'testing');
@@ -361,12 +367,42 @@ async function testTranslatorConnection(silent: boolean = false): Promise<boolea
     }
 }
 
-async function _performTest(activeProfile: TranslatorProfile, startTime: number, silent: boolean): Promise<boolean> {
+/** 测试结果：ok 为假时 error 为分类后的人类可读原因（供 webview 使用） */
+interface TestResult {
+    ok: boolean;
+    error?: string;
+}
+
+/** 把底层错误消息分类为人类可读原因。silent 与否都执行，供 webview 复用。 */
+function classifyTestError(error: unknown): string {
+    if (error instanceof MissingApiKeyError) {
+        return `配置 "${error.profileName}" 缺少 API Key`;
+    }
+    const msg = error instanceof Error ? error.message : '未知错误';
+    if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('API Key') || msg.includes('apiKey')) {
+        return `认证失败：请检查 API Key 是否正确。\n${msg}`;
+    }
+    if (msg.includes('ECONNREFUSED') || msg.includes('连接')) {
+        return `连接失败：无法连接到服务，请检查网络或服务是否启动。\n${msg}`;
+    }
+    if (msg.includes('model') && msg.includes('not found')) {
+        return `模型未找到：请确认模型名正确或已下载。\n${msg}`;
+    }
+    return `测试失败：${msg}`;
+}
+
+async function _performTest(activeProfile: TranslatorProfile, startTime: number, silent: boolean): Promise<TestResult> {
     try {
         const translator = await createTranslatorFromProfile(activeProfile);
 
-        // 发送测试请求
-        const result = await translator.translate('Hello');
+        // 用与实际翻译相同的路径测试：支持流式的 provider 走流式，
+        // 避免出现"非流式测试通过、流式翻译失败"的假绿灯。百度等回退到 translate。
+        let result: string;
+        if (translator.translateStream) {
+            result = await translator.translateStream('Hello', () => { /* 忽略测试期 token */ });
+        } else {
+            result = await translator.translate('Hello');
+        }
         const elapsed = Date.now() - startTime;
 
         if (result && result.length > 0) {
@@ -376,7 +412,7 @@ async function _performTest(activeProfile: TranslatorProfile, startTime: number,
                 );
             }
             statusBar.update(activeProfile.name, 'success');
-            return true;
+            return { ok: true };
         } else {
             if (!silent) {
                 vscode.window.showWarningMessage(
@@ -384,40 +420,26 @@ async function _performTest(activeProfile: TranslatorProfile, startTime: number,
                 );
             }
             statusBar.update(activeProfile.name, 'error');
-            return false;
+            return { ok: false, error: '连接成功但响应为空，请检查配置' };
         }
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : '未知错误';
-
+        const reason = classifyTestError(error);
         statusBar.update(activeProfile.name, 'error');
 
-        // 检查是否是缺少 API Key 的错误
-        if (error instanceof MissingApiKeyError) {
-            if (!silent) {
+        if (!silent) {
+            // silent=false 时仍弹具体错误（含 Manage Profiles 按钮等交互）
+            if (error instanceof MissingApiKeyError) {
                 const action = await vscode.window.showErrorMessage(
-                    `❌ 配置 "${error.profileName}" 缺少 API Key，无法连接。`,
-                    'Manage Profiles'
+                    `❌ ${reason}`, 'Manage Profiles'
                 );
                 if (action === 'Manage Profiles') {
                     vscode.commands.executeCommand('ipynbTranslator.manageProfiles');
                 }
+            } else {
+                vscode.window.showErrorMessage(`❌ ${reason}`);
             }
-        } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') ||
-            errorMessage.includes('API Key') || errorMessage.includes('apiKey')) {
-            // 检查是否是认证错误
-            if (!silent) vscode.window.showErrorMessage(
-                `❌ 认证失败: 请检查 API Key 是否正确配置。\n${errorMessage}`
-            );
-        } else if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('连接')) {
-            if (!silent) vscode.window.showErrorMessage(
-                `❌ 连接失败: 无法连接到服务。请检查网络或服务是否启动。\n${errorMessage}`
-            );
-        } else {
-            if (!silent) vscode.window.showErrorMessage(
-                `❌ 测试失败: ${errorMessage}`
-            );
         }
-        return false;
+        return { ok: false, error: reason };
     }
 }
 

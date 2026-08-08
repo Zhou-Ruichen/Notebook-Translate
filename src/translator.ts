@@ -81,7 +81,8 @@ async function readLines(body: ReadableStream<Uint8Array>, onLine: (line: string
                 onLine(line);
             }
         }
-        // flush 残留
+        // flush 残留：先冲刷 decoder 内部未完成的多字节序列，再处理剩余行
+        buffer += decoder.decode();
         if (buffer.length > 0) { onLine(buffer); }
     } finally {
         reader.releaseLock();

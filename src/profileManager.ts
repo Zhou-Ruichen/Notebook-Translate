@@ -148,6 +148,15 @@ export class ProfileManager {
             throw new Error(`配置 "${name}" 不存在`);
         }
 
+        const oldProvider = profiles[index].provider;
+        const newProvider = updates.provider ?? oldProvider;
+
+        // provider 变化时清除旧密钥：密钥按 name 存，与 provider 无关，
+        // 若不清除会把旧 provider 的 secret 串用到新 provider（如百度 key 当 OpenAI key）。
+        if (oldProvider !== newProvider) {
+            await this.deleteApiKey(name);
+        }
+
         // 合并更新，但移除 Key
         const updatedProfile = { ...profiles[index], ...updates } as TranslatorProfile;
         this.stripKeys(updatedProfile);
