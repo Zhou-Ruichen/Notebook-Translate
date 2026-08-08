@@ -1,18 +1,18 @@
 /**
  * VSCode 扩展入口文件
- * Jupyter Notebook Markdown 英译汉扩展 V0.2
+ * Jupyter Notebook Markdown 英译汉扩展
  */
 
 import * as vscode from 'vscode';
 import { hasChinese } from './utils';
-import { Translator, MockTranslator, OpenAITranslator, OllamaTranslator, BaiduTranslator, formatTranslation, TranslationMode } from './translator';
+import { Translator, OpenAITranslator, OllamaTranslator, BaiduTranslator, formatTranslation, TranslationMode, CancelledError } from './translator';
 import { TranslationCache } from './cache';
 import { ProfileManager } from './profileManager';
 import { TranslatorProfile, TranslationProvider } from './types';
 import { migrateSettings } from './migration';
 import { TranslationStats } from './statistics';
 import { TranslatorStatusBar } from './statusBar';
-import { manageProfiles } from './commands/manageProfiles';
+import { ProfilePanelProvider } from './webview/profilePanel';
 
 // 全局实例
 let profileManager: ProfileManager;
@@ -51,6 +51,14 @@ export async function activate(context: vscode.ExtensionContext) {
     // 更新初始状态
     statusBar.update(profileManager.getActiveProfileName() || 'No Profile', 'ready');
 
+    // 注册 Profile 管理 Webview 面板（活动栏视图）
+    const profilePanel = new ProfilePanelProvider(context.extensionUri, profileManager);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            ProfilePanelProvider.viewType, profilePanel
+        )
+    );
+
     // 注册命令：翻译 Notebook Markdown 单元格（英译汉）
     const translateCmd = vscode.commands.registerCommand(
         'ipynbTranslator.translateMarkdownEnToZh',
@@ -67,31 +75,25 @@ export async function activate(context: vscode.ExtensionContext) {
         }
     );
 
-    // 注册命令：管理翻译配置 (统一入口)
+    // 注册命令：管理/选择配置 → 打开并聚焦 Webview 面板
+    const revealPanel = async () => {
+        await vscode.commands.executeCommand('workbench.view.extension.ipynbTranslator');
+        await profilePanel.show();
+    };
     const manageProfilesCmd = vscode.commands.registerCommand(
-        'ipynbTranslator.manageProfiles',
-        async () => {
-            await manageProfiles(profileManager);
-        }
+        'ipynbTranslator.manageProfiles', revealPanel
     );
-
-    // 注册命令：选择配置 (供状态栏点击使用，重定向到 manageProfiles)
     const selectProfileCmd = vscode.commands.registerCommand(
-        'ipynbTranslator.selectProfile',
-        async () => {
-            await manageProfiles(profileManager);
+        'ipynbTranslator.selectProfile', revealPanel
+    );
+    const newProfileCmd = vscode.commands.registerCommand(
+        'ipynbTranslator.newProfile', async () => {
+            await vscode.commands.executeCommand('workbench.view.extension.ipynbTranslator');
+            await profilePanel.startNewProfile();
         }
     );
 
-    // 注册命令：清除所有翻译（可选功能）
-    const cleanCmd = vscode.commands.registerCommand(
-        'ipynbTranslator.cleanAllTranslations',
-        () => {
-            vscode.window.showInformationMessage('Clean Translations feature is coming soon.');
-        }
-    );
-
-    context.subscriptions.push(translateCmd, testConnectionCmd, manageProfilesCmd, selectProfileCmd, cleanCmd, statusBar);
+    context.subscriptions.push(translateCmd, testConnectionCmd, manageProfilesCmd, selectProfileCmd, newProfileCmd, statusBar);
 }
 
 /**
@@ -157,7 +159,7 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
             '创建配置'
         );
         if (action === '创建配置') {
-            await vscode.commands.executeCommand('ipynbTranslator.addProfile');
+            await vscode.commands.executeCommand('ipynbTranslator.manageProfiles');
         }
         return;
     }
@@ -173,10 +175,14 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
         return;
     }
 
-    // 4. 获取所有 Markdown 单元格
-    const markdownCells = notebook.getCells().filter(
-        cell => cell.kind === vscode.NotebookCellKind.Markup
-    );
+    // 4. 获取所有 Markdown 单元格（用 cellCount/cellAt 替代已废弃的 getCells()）
+    const markdownCells: vscode.NotebookCell[] = [];
+    for (let i = 0; i < notebook.cellCount; i++) {
+        const cell = notebook.cellAt(i);
+        if (cell.kind === vscode.NotebookCellKind.Markup) {
+            markdownCells.push(cell);
+        }
+    }
 
     if (markdownCells.length === 0) {
         vscode.window.showInformationMessage('当前 Notebook 中没有 Markdown 单元格');
@@ -195,6 +201,10 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
             let translatedCount = 0;
             let skippedCount = 0;
             let cachedCount = 0;
+
+            // 把 VSCode 取消令牌桥接到 fetch 的 AbortSignal
+            const abortController = new AbortController();
+            token.onCancellationRequested(() => abortController.abort());
 
             // 初始化翻译缓存
             const cache = new TranslationCache(context);
@@ -241,14 +251,28 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
                         translatedText = cachedTranslation;
                         cachedCount++;
                     } else {
-                        // 缓存未命中，调用翻译器翻译
+                        // 缓存未命中，翻译。优先用流式（可中断、可感知进度），
+                        // 不支持流式的翻译器（百度）回退到请求/响应。
                         const startTime = Date.now();
-                        translatedText = await translator.translate(cellText);
+                        if (translator.translateStream) {
+                            translatedText = await translator.translateStream(
+                                cellText,
+                                // 流式回调：只更新进度文案，不写单元格（避免逐 token 闪烁）
+                                (chunk) => {
+                                    progress.report({
+                                        message: `翻译中... (${i + 1}/${totalCells}) ${chunk.length} 字符`
+                                    });
+                                },
+                                abortController.signal
+                            );
+                        } else {
+                            translatedText = await translator.translate(cellText);
+                        }
                         const duration = Date.now() - startTime;
 
                         // 记录统计
                         stats.log({
-                            model: activeProfile.provider === 'openai' ? (activeProfile as any).model : (activeProfile as any).model || 'unknown',
+                            model: (activeProfile as any).model || 'unknown',
                             profileName: activeProfile.name,
                             charCount: cellText.length,
                             durationMs: duration
@@ -263,15 +287,20 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
                     // 10. 格式化翻译结果（根据翻译模式）
                     const formattedText = formatTranslation(cellText, translatedText, translationMode);
 
-                    // 11. 使用 WorkspaceEdit 更新单元格内容
-                    const edit = new vscode.WorkspaceEdit();
-                    const fullRange = new vscode.Range(
-                        0, 0,
-                        cell.document.lineCount, 0
+                    // 11. 用 NotebookEdit.replaceCells 写回整个单元格（替代已废弃的
+                    // cell.document 文档级编辑）。一次原子替换，撤销时单步回退。
+                    const newCell = new vscode.NotebookCellData(
+                        vscode.NotebookCellKind.Markup,
+                        formattedText,
+                        'markdown'
                     );
-
-                    // 替换整个单元格的内容
-                    edit.replace(cell.document.uri, fullRange, formattedText);                    // 应用编辑
+                    const edit = new vscode.WorkspaceEdit();
+                    edit.set(notebook.uri, [
+                        vscode.NotebookEdit.replaceCells(
+                            new vscode.NotebookRange(cell.index, cell.index + 1),
+                            [newCell]
+                        )
+                    ]);
                     const success = await vscode.workspace.applyEdit(edit);
 
                     if (!success) {
@@ -279,6 +308,10 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
                     }
 
                 } catch (error) {
+                    if (error instanceof CancelledError || token.isCancellationRequested) {
+                        vscode.window.showWarningMessage('翻译已取消');
+                        return;
+                    }
                     console.error(`单元格 ${i + 1} 翻译失败:`, error);
                     const errorMessage = error instanceof Error ? error.message : '未知错误';
                     vscode.window.showErrorMessage(`翻译单元格 ${i + 1} 失败: ${errorMessage}`);
@@ -295,65 +328,6 @@ async function translateNotebookMarkdown(context: vscode.ExtensionContext) {
 }
 
 /**
- * 根据配置创建翻译器实例
- * @param engine 翻译引擎类型
- * @param config VSCode 配置对象
- * @returns 翻译器实例
- */
-function createTranslator(engine: string, config: vscode.WorkspaceConfiguration): Translator {
-    switch (engine) {
-        case 'mock':
-            // Mock 翻译器，用于调试
-            return new MockTranslator();
-
-        case 'openai': {
-            // OpenAI 翻译器（支持所有 OpenAI 兼容服务）
-            const apiKey = config.get<string>('openai.apiKey', '');
-            const model = config.get<string>('openai.model', 'gpt-4o-mini');
-            const baseUrl = config.get<string>('openai.baseUrl', 'https://api.openai.com/v1');
-
-            if (!apiKey) {
-                throw new Error(
-                    '未配置 API Key。请在设置中配置 ipynbTranslator.openai.apiKey，或使用「选择翻译引擎」命令配置'
-                );
-            }
-
-            return new OpenAITranslator(apiKey, model, baseUrl);
-        }
-
-        case 'ollama': {
-            // Ollama 本地模型翻译器
-            const endpoint = config.get<string>('ollama.endpoint', 'http://localhost:11434');
-            const model = config.get<string>('ollama.model', 'llama3');
-
-            return new OllamaTranslator(endpoint, model);
-        }
-
-        case 'baidu': {
-            // 百度翻译
-            const appId = config.get<string>('baidu.appId', '');
-            const secretKey = config.get<string>('baidu.secretKey', '');
-
-            if (!appId) {
-                throw new Error(
-                    '未配置百度翻译 APP ID。请在设置中配置 ipynbTranslator.baidu.appId'
-                );
-            }
-            if (!secretKey) {
-                throw new Error(
-                    '未配置百度翻译密钥。请在设置中配置 ipynbTranslator.baidu.secretKey'
-                );
-            }
-
-            return new BaiduTranslator(appId, secretKey);
-        }
-
-        default:
-            throw new Error(`未知的翻译引擎: ${engine}`);
-    }
-}
-
-/**
  * 测试翻译引擎连接
  */
 /**
@@ -361,14 +335,14 @@ function createTranslator(engine: string, config: vscode.WorkspaceConfiguration)
  * @param silent 是否静默测试（不显示 Success 弹窗，只更新状态栏）
  * @returns 测试是否成功
  */
-async function testTranslatorConnection(silent: boolean = false): Promise<boolean> {
+async function testTranslatorConnection(silent: boolean = false): Promise<TestResult> {
     profileManager.refresh();
     const activeProfile = profileManager.getActiveProfile();
 
     if (!activeProfile) {
         if (!silent) vscode.window.showWarningMessage('尚未配置翻译服务，请先创建配置');
         statusBar.update('No Profile', 'error');
-        return false;
+        return { ok: false, error: '尚未配置翻译服务' };
     }
 
     statusBar.update(activeProfile.name, 'testing');
@@ -393,12 +367,42 @@ async function testTranslatorConnection(silent: boolean = false): Promise<boolea
     }
 }
 
-async function _performTest(activeProfile: TranslatorProfile, startTime: number, silent: boolean): Promise<boolean> {
+/** 测试结果：ok 为假时 error 为分类后的人类可读原因（供 webview 使用） */
+interface TestResult {
+    ok: boolean;
+    error?: string;
+}
+
+/** 把底层错误消息分类为人类可读原因。silent 与否都执行，供 webview 复用。 */
+function classifyTestError(error: unknown): string {
+    if (error instanceof MissingApiKeyError) {
+        return `配置 "${error.profileName}" 缺少 API Key`;
+    }
+    const msg = error instanceof Error ? error.message : '未知错误';
+    if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('API Key') || msg.includes('apiKey')) {
+        return `认证失败：请检查 API Key 是否正确。\n${msg}`;
+    }
+    if (msg.includes('ECONNREFUSED') || msg.includes('连接')) {
+        return `连接失败：无法连接到服务，请检查网络或服务是否启动。\n${msg}`;
+    }
+    if (msg.includes('model') && msg.includes('not found')) {
+        return `模型未找到：请确认模型名正确或已下载。\n${msg}`;
+    }
+    return `测试失败：${msg}`;
+}
+
+async function _performTest(activeProfile: TranslatorProfile, startTime: number, silent: boolean): Promise<TestResult> {
     try {
         const translator = await createTranslatorFromProfile(activeProfile);
 
-        // 发送测试请求
-        const result = await translator.translate('Hello');
+        // 用与实际翻译相同的路径测试：支持流式的 provider 走流式，
+        // 避免出现"非流式测试通过、流式翻译失败"的假绿灯。百度等回退到 translate。
+        let result: string;
+        if (translator.translateStream) {
+            result = await translator.translateStream('Hello', () => { /* 忽略测试期 token */ });
+        } else {
+            result = await translator.translate('Hello');
+        }
         const elapsed = Date.now() - startTime;
 
         if (result && result.length > 0) {
@@ -408,7 +412,7 @@ async function _performTest(activeProfile: TranslatorProfile, startTime: number,
                 );
             }
             statusBar.update(activeProfile.name, 'success');
-            return true;
+            return { ok: true };
         } else {
             if (!silent) {
                 vscode.window.showWarningMessage(
@@ -416,40 +420,26 @@ async function _performTest(activeProfile: TranslatorProfile, startTime: number,
                 );
             }
             statusBar.update(activeProfile.name, 'error');
-            return false;
+            return { ok: false, error: '连接成功但响应为空，请检查配置' };
         }
     } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : '未知错误';
-
+        const reason = classifyTestError(error);
         statusBar.update(activeProfile.name, 'error');
 
-        // 检查是否是缺少 API Key 的错误
-        if (error instanceof MissingApiKeyError) {
-            if (!silent) {
+        if (!silent) {
+            // silent=false 时仍弹具体错误（含 Manage Profiles 按钮等交互）
+            if (error instanceof MissingApiKeyError) {
                 const action = await vscode.window.showErrorMessage(
-                    `❌ 配置 "${error.profileName}" 缺少 API Key，无法连接。`,
-                    'Manage Profiles'
+                    `❌ ${reason}`, 'Manage Profiles'
                 );
                 if (action === 'Manage Profiles') {
                     vscode.commands.executeCommand('ipynbTranslator.manageProfiles');
                 }
+            } else {
+                vscode.window.showErrorMessage(`❌ ${reason}`);
             }
-        } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') ||
-            errorMessage.includes('API Key') || errorMessage.includes('apiKey')) {
-            // 检查是否是认证错误
-            if (!silent) vscode.window.showErrorMessage(
-                `❌ 认证失败: 请检查 API Key 是否正确配置。\n${errorMessage}`
-            );
-        } else if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('连接')) {
-            if (!silent) vscode.window.showErrorMessage(
-                `❌ 连接失败: 无法连接到服务。请检查网络或服务是否启动。\n${errorMessage}`
-            );
-        } else {
-            if (!silent) vscode.window.showErrorMessage(
-                `❌ 测试失败: ${errorMessage}`
-            );
         }
-        return false;
+        return { ok: false, error: reason };
     }
 }
 

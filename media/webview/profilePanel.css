@@ -1,0 +1,177 @@
+/* Profile 面板样式，使用 VSCode 主题变量适配明暗 */
+:root {
+    --pad: 12px;
+}
+
+body {
+    margin: 0;
+    padding: var(--pad);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    color: var(--vscode-foreground);
+    background-color: var(--vscode-editor-background);
+}
+
+h2 {
+    margin: 0 0 var(--pad);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--pad);
+}
+
+.list .row {
+    border: 1px solid var(--vscode-panel-border, var(--vscode-editorWidget-border));
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 8px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 4px 8px;
+}
+
+.list .row.active {
+    border-color: var(--vscode-focusBorder);
+    background-color: var(--vscode-list-activeSelectionBackground, transparent);
+}
+
+.row .name {
+    font-weight: 600;
+    grid-column: 1;
+}
+
+.row .meta {
+    color: var(--vscode-descriptionForeground);
+    font-size: 11px;
+    grid-column: 1;
+}
+
+.row .badge {
+    grid-row: 1;
+    grid-column: 2;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 8px;
+    align-self: start;
+}
+
+.row .badge.ok {
+    color: var(--vscode-testing-iconPassed, #3fb950);
+    border: 1px solid currentColor;
+}
+
+.row .badge.warn {
+    color: var(--vscode-editorWarning-foreground, #d29922);
+    border: 1px solid currentColor;
+}
+
+.row .actions {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.empty {
+    color: var(--vscode-descriptionForeground);
+    padding: 24px 0;
+    text-align: center;
+}
+
+/* form */
+.form .field {
+    margin-bottom: 10px;
+}
+
+.field label {
+    display: block;
+    font-size: 11px;
+    margin-bottom: 4px;
+    color: var(--vscode-foreground);
+}
+
+input, select, textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 8px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, transparent);
+    border-radius: 2px;
+    font-family: var(--vscode-editor-font-family);
+    font-size: var(--vscode-font-size);
+    outline: none;
+}
+
+input:focus, select:focus, textarea:focus {
+    border-color: var(--vscode-focusBorder);
+}
+
+textarea {
+    min-height: 60px;
+    resize: vertical;
+}
+
+.btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.btn {
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    border: none;
+    padding: 6px 12px;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.btn:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.btn.primary {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+}
+
+.btn.primary:hover {
+    background: var(--vscode-button-hoverBackground);
+}
+
+.btn.danger {
+    color: var(--vscode-errorForeground, #f85149);
+}
+
+.btn.subtle {
+    font-size: 11px;
+    padding: 4px 8px;
+    opacity: 0.85;
+    margin-bottom: 8px;
+}
+
+.toast {
+    position: fixed;
+    bottom: var(--pad);
+    left: var(--pad);
+    right: var(--pad);
+    padding: 8px 12px;
+    background: var(--vscode-editorWidget-background);
+    border: 1px solid var(--vscode-editorWidget-border);
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.toast.error {
+    border-color: var(--vscode-inputValidation-errorBorder, #f85149);
+    color: var(--vscode-errorForeground, #f85149);
+}

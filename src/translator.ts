@@ -30,11 +30,78 @@ export function formatTranslation(originalText: string, translatedText: string, 
  */
 export interface Translator {
     /**
-     * 翻译文本
+     * 翻译文本（请求/响应模式）
      * @param text 待翻译的文本
      * @returns 翻译后的文本
      */
     translate(text: string): Promise<string>;
+
+    /**
+     * 流式翻译（可选）。逐 token 回调，返回最终完整译文。
+     * 不实现的翻译器（如百度）由调用方回退到 translate()。
+     * @param text 待翻译的文本
+     * @param onToken 每收到一段译文片段时回调
+     * @param signal 可选的中断信号，触发后应尽快中止请求
+     */
+    translateStream?(text: string, onToken: (chunk: string) => void, signal?: AbortSignal): Promise<string>;
+}
+
+/**
+ * 中断错误：流式翻译被 AbortSignal 取消时抛出
+ */
+export class CancelledError extends Error {
+    constructor() {
+        super('Translation cancelled');
+        this.name = 'CancelledError';
+    }
+}
+
+/**
+ * 读取 fetch 流式响应体，按行产出字符串。
+ * 处理跨 chunk 的不完整行（缓冲到分隔符）。
+ * @param body fetch 响应的 ReadableStream
+ * @param onLine 每完整一行回调（不含换行符）
+ * @param signal 中断信号
+ */
+async function readLines(body: ReadableStream<Uint8Array>, onLine: (line: string) => void, signal?: AbortSignal): Promise<void> {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+        while (true) {
+            if (signal?.aborted) { throw new CancelledError(); }
+            const { done, value } = await reader.read();
+            if (done) { break; }
+            buffer += decoder.decode(value, { stream: true });
+            let nl: number;
+            // 按换行符切，保留最后一段不完整的在 buffer
+            while ((nl = buffer.indexOf('\n')) >= 0) {
+                const line = buffer.slice(0, nl);
+                buffer = buffer.slice(nl + 1);
+                onLine(line);
+            }
+        }
+        // flush 残留：先冲刷 decoder 内部未完成的多字节序列，再处理剩余行
+        buffer += decoder.decode();
+        if (buffer.length > 0) { onLine(buffer); }
+    } finally {
+        reader.releaseLock();
+    }
+}
+
+/**
+ * 校验流式累积结果：清洗 think 标签后若为空，根据原始内容给出明确错误，
+ * 避免把空串写回单元格导致原文丢失。
+ * - 原始有内容但清洗后空：只有推理链，无有效译文。
+ * - 原始为空/纯空白：模型未产出任何内容。
+ */
+export function validateStreamResult(result: string): string {
+    const cleaned = cleanThinkTags(result);
+    if (cleaned) { return cleaned; }
+    if (result.trim()) {
+        throw new Error('Translation Empty (Reasoning only)');
+    }
+    throw new Error('Translation Empty (No content from model)');
 }
 
 /**
@@ -54,51 +121,6 @@ export class MockTranslator implements Translator {
         // 简单地在原文前添加 [Mock Translation] 标记
         return `[模拟翻译]\n${text}`;
     }
-}
-
-/**
- * 简单的 HTTP 请求函数
- * 使用 Node.js 的 https 模块
- */
-function httpsRequest(url: string, options: any): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const https = require('https');
-        const urlObj = new URL(url);
-
-        const reqOptions = {
-            hostname: urlObj.hostname,
-            port: urlObj.port || 443,
-            path: urlObj.pathname + urlObj.search,
-            method: options.method || 'GET',
-            headers: options.headers || {}
-        };
-
-        const req = https.request(reqOptions, (res: any) => {
-            let data = '';
-
-            res.on('data', (chunk: any) => {
-                data += chunk;
-            });
-
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve(data);
-                } else {
-                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-                }
-            });
-        });
-
-        req.on('error', (error: Error) => {
-            reject(error);
-        });
-
-        if (options.body) {
-            req.write(options.body);
-        }
-
-        req.end();
-    });
 }
 
 /**
@@ -159,7 +181,7 @@ export class OpenAITranslator implements Translator {
 
         try {
             // 发送 HTTP 请求
-            const responseText = await httpsRequest(url, {
+            const { text: responseText } = await httpFetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -193,52 +215,112 @@ export class OpenAITranslator implements Translator {
             throw error;
         }
     }
+
+    /**
+     * 流式翻译：调用 OpenAI chat/completions（stream:true），响应为 SSE。
+     * 每行的 data: {json} 中 choices[0].delta.content 携带片段。
+     */
+    async translateStream(text: string, onToken: (chunk: string) => void, signal?: AbortSignal): Promise<string> {
+        const url = `${this.baseUrl}/chat/completions`;
+        const userPrompt = `Please translate the following Markdown content:\n\n${text}`;
+        const requestBody = {
+            model: this.model,
+            messages: [
+                { role: "system", content: this.systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
+            temperature: 0.3,
+            stream: true
+        };
+
+        let resp: Response;
+        try {
+            resp = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.apiKey}`
+                },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+        } catch (e: any) {
+            if (signal?.aborted) { throw new CancelledError(); }
+            throw new Error(`Translation failed: ${e?.message ?? e}`);
+        }
+        if (!resp.ok || !resp.body) {
+            const detail = await resp.text().catch(() => '');
+            throw new Error(`Translation failed: HTTP ${resp.status}: ${detail}`);
+        }
+
+        let result = '';
+        await readLines(resp.body, (line) => {
+            // SSE 行形如 "data: {...}"，遇 [DONE] 结束；空行跳过
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) { return; }
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') { return; }
+            let chunk: any;
+            try {
+                chunk = JSON.parse(payload);
+            } catch {
+                return; // 无法解析的行（心跳/注释）跳过
+            }
+            // 流内错误分片：与 Ollama 一致地抛出，而非静默吞掉
+            if (chunk?.error) {
+                throw new Error(`OpenAI API error: ${chunk.error.message ?? chunk.error}`);
+            }
+            const token = chunk?.choices?.[0]?.delta?.content;
+            if (token) {
+                result += token;
+                onToken(token);
+            }
+        }, signal);
+
+        return validateStreamResult(result);
+    }
 }
 
 /**
- * 通用 HTTP 请求函数
- * 支持 http 和 https 协议
+ * 通用 HTTP 响应（基于全局 fetch）
  */
-function httpRequest(url: string, options: any): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const urlObj = new URL(url);
-        const isHttps = urlObj.protocol === 'https:';
-        const httpModule = isHttps ? require('https') : require('http');
+export interface HttpResponse {
+    status: number;
+    text: string;
+}
 
-        const reqOptions = {
-            hostname: urlObj.hostname,
-            port: urlObj.port || (isHttps ? 443 : 80),
-            path: urlObj.pathname + urlObj.search,
-            method: options.method || 'GET',
-            headers: options.headers || {}
-        };
-
-        const req = httpModule.request(reqOptions, (res: any) => {
-            let data = '';
-
-            res.on('data', (chunk: any) => {
-                data += chunk;
-            });
-
-            res.on('end', () => {
-                if (res.statusCode >= 200 && res.statusCode < 300) {
-                    resolve(data);
-                } else {
-                    reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-                }
-            });
-        });
-
-        req.on('error', (error: Error) => {
-            reject(error);
-        });
-
-        if (options.body) {
-            req.write(options.body);
+/**
+ * 基于 Node 18+ 全局 fetch 的请求函数，替代手写的 http/https 模块。
+ *
+ * 错误契约（下游 extension.ts / OllamaTranslator 依赖字符串匹配，不得破坏）：
+ * - HTTP 非 2xx：抛 `HTTP ${status}: ${body}`，保留 '401'/'Unauthorized' 等子串。
+ * - 网络失败（fetch 仅在此时抛）：从 error.cause 提取 code/hostname，
+ *   抛 `Network error (${code}) connecting to ${host}: ...`，其中 code 形如
+ *   'ECONNREFUSED'，确保 Ollama 的 ECONNREFUSED 分支仍命中。
+ */
+export async function httpFetch(url: string, init: RequestInit): Promise<HttpResponse> {
+    let resp: Response;
+    try {
+        resp = await fetch(url, init);
+    } catch (e: any) {
+        // 透传我们已构造的 HTTP 错误（不会发生在这里，但保持类型安全）
+        if (e instanceof Error && e.message.startsWith('HTTP ')) {
+            throw e;
         }
+        const code = e?.cause?.code ?? 'UNKNOWN';
+        const host = e?.cause?.hostname ?? safeHost(url);
+        throw new Error(`Network error (${code}) connecting to ${host}: ${e?.message ?? e}`);
+    }
 
-        req.end();
-    });
+    const text = await resp.text();
+    if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}: ${text}`);
+    }
+    return { status: resp.status, text };
+}
+
+function safeHost(url: string): string {
+    try { return new URL(url).hostname; } catch { return 'unknown'; }
 }
 
 /**
@@ -286,7 +368,7 @@ export class OllamaTranslator implements Translator {
 
         try {
             // 发送 HTTP 请求
-            const responseText = await httpRequest(url, {
+            const { text: responseText } = await httpFetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -332,6 +414,72 @@ export class OllamaTranslator implements Translator {
             }
             throw error;
         }
+    }
+
+    /**
+     * 流式翻译：调用 Ollama /api/chat（stream:true），响应为 ndjson，
+     * 每行 {message:{content:"..."}, done:false}，done:true 结束。
+     */
+    async translateStream(text: string, onToken: (chunk: string) => void, signal?: AbortSignal): Promise<string> {
+        const url = `${this.endpoint}/api/chat`;
+        const userPrompt = `Please translate the following Markdown content:\n\n${text}`;
+        const requestBody = {
+            model: this.model,
+            messages: [
+                { role: "system", content: this.systemPrompt },
+                { role: "user", content: userPrompt }
+            ],
+            stream: true,
+            options: { temperature: 0.3 }
+        };
+
+        let resp: Response;
+        try {
+            resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(requestBody),
+                signal
+            });
+        } catch (e: any) {
+            if (signal?.aborted) { throw new CancelledError(); }
+            // 复用 translate() 的友好错误（含 ECONNREFUSED / 连接 子串）
+            const code = e?.cause?.code ?? 'UNKNOWN';
+            if (code === 'ECONNREFUSED') {
+                throw new Error(
+                    `Network error (ECONNREFUSED) connecting to ${this.endpoint}`
+                );
+            }
+            throw new Error(`Translation failed: ${e?.message ?? e}`);
+        }
+        if (!resp.ok || !resp.body) {
+            const detail = await resp.text().catch(() => '');
+            throw new Error(`HTTP ${resp.status}: ${detail}`);
+        }
+
+        let result = '';
+        await readLines(resp.body, (line) => {
+            const trimmed = line.trim();
+            if (!trimmed) { return; }
+            try {
+                const chunk = JSON.parse(trimmed);
+                if (chunk.error) {
+                    throw new Error(`Ollama API error: ${chunk.error}`);
+                }
+                const token = chunk?.message?.content;
+                if (token) {
+                    result += token;
+                    onToken(token);
+                }
+            } catch (e) {
+                // JSON.parse 失败或业务错误：业务错误重新抛出，解析噪声吞掉
+                if (e instanceof Error && e.message.includes('Ollama API error')) {
+                    throw e;
+                }
+            }
+        }, signal);
+
+        return validateStreamResult(result);
     }
 }
 
@@ -421,13 +569,8 @@ export class BaiduTranslator implements Translator {
         const url = `https://fanyi-api.baidu.com/api/trans/vip/translate?${params.toString()}`;
 
         try {
-            // 发送 HTTP 请求
-            const responseText = await httpRequest(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            });
+            // 发送 HTTP 请求（GET，参数已在 query string，无需 Content-Type）
+            const { text: responseText } = await httpFetch(url, { method: 'GET' });
 
             const data = JSON.parse(responseText);
 
@@ -479,6 +622,6 @@ export class TranslationError extends Error {
  * @param text 原始 LLM 响应文本
  * @returns 清洗后的文本 (如果只有 think 内容则可能为空字符串)
  */
-function cleanThinkTags(text: string): string {
+export function cleanThinkTags(text: string): string {
     return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
 }
